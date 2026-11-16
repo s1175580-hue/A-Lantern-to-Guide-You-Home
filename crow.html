@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Crow Gate - Breaking Free</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 全局重置，禁止选中与默认触摸滚动 */
+        @font-face {
+            font-family: 'CHI_Bottoms';
+            src: url('CHI_Bottoms.ttf') format('truetype');
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b111b;
+            font-family: 'CHI_Bottoms', "Georgia", "Songti SC", "STSong", "SimSun", serif;
+            cursor: none;
+        }
+
+        /* 左上角提示条统一使用自定义字体 */
+        #hud-tip {
+            font-family: 'CHI_Bottoms', serif;
+        }
+
+        /* 通用全屏图层（确保所有图层严格按 cover 比例像素级对齐） */
+        .scene-layer {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* ==================== 1. 底层背景：图2（通关治愈态） & 图1（初始困笼态） ==================== */
+        /* 通关态背景放在最底层 (z-index: 1) */
+        #bg-healed {
+            z-index: 1;
+        }
+
+        /* 初始态背景盖在上面 (z-index: 2)，破笼后平滑淡出露出图2 */
+        #bg-initial {
+            z-index: 2;
+            opacity: 1;
+            transition: opacity 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+            #bg-initial.fade-out {
+                opacity: 0;
+                pointer-events: none;
+            }
+
+        /* ==================== 2. 中间层 (z-index: 3)：独立白色鸟笼连续左右弯曲画布 ==================== */
+        #cage-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        /* ==================== 3. 前景喷泉水流层 (z-index: 4)：遮挡笼底的蓝色弧形水柱 ==================== */
+        #fountain-front {
+            z-index: 4;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 1.2s ease;
+        }
+
+            #fountain-front.fade-out {
+                opacity: 0;
+            }
+
+        /* ==================== 4. 环境特效 (z-index: 5)：雨夜细雨动效 ==================== */
+        #rain-layer {
+            position: fixed;
+            inset: 0;
+            z-index: 5;
+            pointer-events: none;
+            overflow: hidden;
+            transition: opacity 1s ease;
+        }
+
+            #rain-layer.stopped {
+                opacity: 0;
+            }
+
+        .raindrop {
+            position: absolute;
+            top: -80px;
+            width: 1.5px;
+            height: 60px;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(186, 224, 255, 0.55));
+            animation: rainFall linear infinite;
+        }
+
+        @keyframes rainFall {
+            0% {
+                transform: translate3d(0, -80px, 0) rotate(11deg);
+            }
+
+            100% {
+                transform: translate3d(-85px, 112vh, 0) rotate(11deg);
+            }
+        }
+
+        /* ==================== 5. 顶层交互画布 (z-index: 6)：发光划痕与金色火花 ==================== */
+        #fx-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 6;
+            touch-action: none;
+        }
+
+        /* 破笼瞬间强光闪烁遮罩 (z-index: 8) */
+        #screen-flash {
+            position: fixed;
+            inset: 0;
+            z-index: 8;
+            background: radial-gradient(circle at center, #ffffff 0%, #fef9c3 65%, rgba(255, 255, 255, 0.9) 100%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.65s ease-out;
+        }
+
+            #screen-flash.active {
+                opacity: 0.95;
+                transition: opacity 0.08s ease-in;
+            }
+
+        /* ==================== 6. 速度拉伸游标（果冻效果） ==================== */
+        #custom-cursor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 26px;
+            height: 26px;
+            background-color: #fde047; /* 暖黄色实心球 */
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: 0 0 12px rgba(253, 224, 71, 0.9), 0 0 24px rgba(253, 224, 71, 0.5);
+            will-change: transform;
+        }
+
+        #ending-panel {
+            position: fixed;
+            bottom: 7%;
+            left: 50%;
+            transform: translate(-50%, 22px);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 640px;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.3s ease, transform 1.3s ease;
+        }
+
+            #ending-panel.visible {
+                opacity: 1;
+                transform: translate(-50%, 0);
+                pointer-events: auto;
+            }
+
+        /* 结局诗句（已去掉斜体） */
+        #ending-poem {
+            color: #ffffff;
+            font-size: clamp(0.8rem, 2.8vw, 1.2rem);
+            font-family: "CHI_Bottoms", serif;
+            font-style: normal;
+            letter-spacing: 0.08em;
+            line-height: 1.8;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95), 0 0 22px rgba(253, 224, 71, 0.65);
+            transform: translateY(27px);
+            max-width: 800px;
+            margin: 0 auto 10px auto;
+        }
+
+        /* ==================== 霓虹呼吸按钮（Neon Glow Button） ==================== */
+        #btn-return {
+            padding: 12px 42px;
+            font-family: "CHI_Bottoms", serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.15em;
+            color: #fde047;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1.5px solid #fde047;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(253, 224, 71, 0.4), inset 0 0 10px rgba(253, 224, 71, 0.2);
+            transition: all 0.35s ease;
+            opacity: 0;
+            animation: fadeInBtn 1s ease 1.5s forwards, neonBreathe 2.4s ease-in-out 2.5s infinite;
+        }
+
+        /* 呼吸光晕动画 */
+        @keyframes neonBreathe {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(253, 224, 71, 0.3), inset 0 0 5px rgba(253, 224, 71, 0.1);
+                border-color: rgba(253, 224, 71, 0.6);
+            }
+
+            50% {
+                box-shadow: 0 0 25px rgba(253, 224, 71, 0.8), 0 0 40px rgba(253, 224, 71, 0.4), inset 0 0 15px rgba(253, 224, 71, 0.4);
+                border-color: rgba(253, 224, 71, 1);
+            }
+        }
+
+        /* 鼠标悬停（Hover）状态：填满、反白、强光 */
+        #btn-return:hover {
+            opacity: 1 !important;
+            background: #fde047;
+            color: #ffffff;
+            animation: none;
+            box-shadow: 0 0 20px rgba(253, 224, 71, 1), 0 0 40px rgba(253, 224, 71, 0.8), 0 0 70px rgba(253, 224, 71, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
+        }
+
+        /* 按钮延迟淡入 */
+        @keyframes fadeInBtn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 底层图2（通关后显现：金色弯月、敞开笼顶、发光白乌鸦与石板小路） -->
+    <div id="bg-healed" class="scene-layer"></div>
+
+    <!-- 2. 初始图1（不含独立鸟笼：夜空藤蔓、等高线蓝山、石喷泉与笼内暗影乌鸦） -->
+    <div id="bg-initial" class="scene-layer"></div>
+
+    <!-- 3. 中间层：独立白色鸟笼 PNG（按住左右划动时整笼连贯弯曲摆动） -->
+    <canvas id="cage-canvas"></canvas>
+
+    <!-- 4. 前景层：遮挡在鸟笼下方的蓝色弧形喷泉水流与水珠 -->
+    <div id="fountain-front" class="scene-layer"></div>
+
+    <!-- 5. 环境层：循环下雨动效 -->
+    <div id="rain-layer"></div>
+
+    <!-- 6. 顶层交互画布：发光刀痕与金色火花粒子 -->
+    <canvas id="fx-canvas"></canvas>
+
+    <!-- 7. 破笼瞬间强光闪烁层 -->
+    <div id="screen-flash"></div>
+
+    <!-- 8. 自定义果冻游标与左上角状态栏 -->
+    <div id="custom-cursor"></div>
+
+    <div id="hud-bar" class="fixed top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none transition-opacity duration-500">
+        <div id="hud-tip" class="px-4 py-1.5 rounded-full bg-slate-950/75 border border-amber-300/30 backdrop-blur-md text-slate-200 text-xs sm:text-sm tracking-widest flex items-center gap-2 shadow-lg">
+            <span class="w-2 h-2 rounded-full bg-amber-300 animate-ping"></span>
+            <span>Hold and swipe across the cage · Progress: <strong id="hit-num" class="text-amber-300">0</strong> / 5</span>
+        </div>
+    </div>
+
+    <!-- 自定义状态提示弹窗（替代 alert） -->
+    <div id="toast-msg" class="fixed top-16 left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-2xl bg-slate-900/95 border border-amber-300/50 text-amber-100 text-sm tracking-wider shadow-2xl opacity-0 pointer-events-none transition-opacity duration-300 text-center">
+        ✨ 已保存乌鸦关通关存档 (crow_done = true)！实际项目中将跳回 index.html 点亮月亮。
+    </div>
+
+    <!-- 9. 通关结局文案与返回森林按钮 -->
+    <div id="ending-panel">
+        <p id="ending-poem">You brought the light, and it found its peace.</p>
+        <button id="btn-return" onclick="returnToForest()">Keep Going</button>
+    </div>
+
+    <script>
+        /* =========================================================================
+        【素材替换区】当你从 Procreate 导出真实 PNG 后，只需把路径填入下面 4 个常量：
+        ========================================================================= */
+        const BG_INITIAL_SRC     = 'bg_initial.png'; // 例如: 'images/bg_initial.png'      (图1去掉白色鸟笼后的背景)
+        const CAGE_PNG_SRC       = 'cage.png'; // 例如: 'images/cage.png'            (图1单独导出的透明背景白色鸟笼)
+        const FOUNTAIN_FRONT_SRC = 'fountain.png'; // 例如: 'images/fountain_front.png'  (可选：遮在鸟笼下方的蓝色水流透明图)
+        const BG_HEALED_SRC      = 'bg_healed.png'; // 例如: 'images/bg_healed.png'       (图2：金色月亮 + 发光白乌鸦 + 石板路)
+
+        /* =========================================================================
+        【程序化高清 Procreate 风格美术生成器】
+        在未填入外部 PNG 路径时，自动绘制与你上传的两张 Procreate 画作高度一致的 4 层美术素材
+        ========================================================================= */
+        const ART_W = 1600;
+        const ART_H = 1200;
+
+        // 辅助函数：绘制共用的暗炭蓝纹理夜空、藤蔓线稿、等高线蓝山与白色石喷泉底座
+        function drawSharedLandscape(ctx, isHealed) {
+        // 1. 深炭蓝纸纹底色
+        ctx.fillStyle = '#141d29';
+        ctx.fillRect(0, 0, ART_W, ART_H);
+
+        // 细腻纸张噪点质感
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
+        for (let i = 0; i < 1800; i++) {
+        ctx.fillRect((i * 197) % ART_W, (i * 313) % ART_H, 2, 2);
+        }
+        ctx.restore();
+
+        // 2. 背景暗绿灰藤蔓与叶片暗纹
+        ctx.save();
+        ctx.strokeStyle = 'rgba(130, 155, 150, 0.22)';
+        ctx.fillStyle = 'rgba(130, 155, 150, 0.14)';
+        ctx.lineWidth = 2.5;
+        const vines = [
+        { sx: 80, sy: 0, cx1: 220, cy1: 260, cx2: 40, cy2: 480, ex: 190, ey: 720 },
+        { sx: 460, sy: 0, cx1: 350, cy1: 180, cx2: 520, cy2: 340, ex: 410, ey: 520 },
+        { sx: 1180, sy: 0, cx1: 1320, cy1: 200, cx2: 1120, cy2: 380, ex: 1260, ey: 560 },
+        { sx: 1510, sy: 0, cx1: 1370, cy1: 250, cx2: 1540, cy2: 470, ex: 1410, ey: 710 }
+        ];
+        vines.forEach(v => {
+        ctx.beginPath();
+        ctx.moveTo(v.sx, v.sy);
+        ctx.bezierCurveTo(v.cx1, v.cy1, v.cx2, v.cy2, v.ex, v.ey);
+        ctx.stroke();
+
+        // 沿藤蔓点缀叶片
+        for (let t = 0.15; t <= 0.85; t += 0.16) {
+        const lx = (1 - t) * (1 - t) * v.sx + 2 * (1 - t) * t * v.cx1 + t * t * v.ex;
+        const ly = (1 - t) * (1 - t) * v.sy + 2 * (1 - t) * t * v.cy1 + t * t * v.ey;
+        const dir = Math.round(t * 10) % 2 === 0 ? 1 : -1;
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.rotate(dir * 0.55);
+        ctx.beginPath();
+        ctx.ellipse(dir * 24, 0, 26, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        }
+        });
+        ctx.restore();
+
+        // 3. 图2专属：升起的温暖金色大弯月
+        if (isHealed) {
+        ctx.save();
+        const moonCanvas = document.createElement('canvas');
+        moonCanvas.width = ART_W;
+        moonCanvas.height = ART_H;
+        const mCtx = moonCanvas.getContext('2d');
+        mCtx.fillStyle = '#e5d68a';
+        mCtx.beginPath();
+        mCtx.arc(800, 360, 365, 0, Math.PI * 2);
+        mCtx.fill();
+        mCtx.globalCompositeOperation = 'destination-out';
+        mCtx.beginPath();
+        mCtx.arc(800, 250, 330, 0, Math.PI * 2);
+        mCtx.fill();
+
+        ctx.shadowBlur = 35;
+        ctx.shadowColor = 'rgba(235, 220, 140, 0.5)';
+        ctx.drawImage(moonCanvas, 0, 0);
+        ctx.restore();
+        }
+
+        // 4. 几何三角山峰（带等高线纹理与暗面切面，还原 Procreate 山峦）
+        function drawMountain(peakX, peakY, leftX, rightX, baseY, fillMain, fillShadow, hasContour) {
+        ctx.save();
+        ctx.fillStyle = fillMain;
+        ctx.beginPath();
+        ctx.moveTo(peakX, peakY);
+        ctx.lineTo(leftX, baseY);
+        ctx.lineTo(rightX, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        if (hasContour) {
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(180, 205, 235, 0.25)';
+        ctx.lineWidth = 1.6;
+        for (let r = 40; r < 520; r += 26) {
+        ctx.beginPath();
+        ctx.ellipse(peakX - 30, peakY + r * 0.85, r * 0.75, r * 0.48, 0.2, 0, Math.PI * 2);
+        ctx.stroke();
+        }
+        ctx.restore();
+        }
+
+        ctx.fillStyle = fillShadow;
+        ctx.beginPath();
+        ctx.moveTo(peakX, peakY);
+        ctx.lineTo(peakX + (rightX - peakX) * 0.18, baseY);
+        ctx.lineTo(rightX, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(220, 232, 245, 0.45)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(leftX, baseY);
+        ctx.lineTo(peakX, peakY);
+        ctx.lineTo(rightX, baseY);
+        ctx.stroke();
+        ctx.restore();
+        }
+
+        // 远景山峰
+        drawMountain(275, 445, 30, 520, 960, '#22385c', '#0e1726', true);
+        drawMountain(1150, 520, 920, 1380, 960, '#1c2f4d', '#0b121e', false);
+        drawMountain(1435, 415, 1180, 1660, 960, '#243c63', '#101929', true);
+
+        // 近景山峰
+        drawMountain(520, 355, 220, 820, 980, '#274069', '#090e17', true);
+        drawMountain(115, 625, -40, 290, 980, '#2b4673', '#6b7b94', true);
+        drawMountain(1345, 580, 1080, 1620, 980, '#253d63', '#080c14', true);
+
+        // 5. 前景起伏的深蓝丘陵与铺石小路
+        ctx.save();
+        ctx.fillStyle = isHealed ? '#4b5563' : '#263040';
+        ctx.beginPath();
+        ctx.moveTo(260, 960);
+        ctx.quadraticCurveTo(800, 880, 1340, 960);
+        ctx.lineTo(1340, 1120);
+        ctx.lineTo(260, 1120);
+        ctx.closePath();
+        ctx.fill();
+
+        if (isHealed) {
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.38)';
+        const stones = [
+        [880, 955, 65, 22, -0.15],
+        [970, 940, 75, 24, -0.1],
+        [1065, 928, 70, 22, -0.05],
+        [940, 985, 85, 26, -0.12],
+        [1045, 970, 80, 25, -0.08],
+        [1145, 955, 70, 22, -0.04]
+        ];
+        stones.forEach(([sx, sy, sw, sh, rot]) => {
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(rot);
+        ctx.fillRect(-sw / 2, -sh / 2, sw, sh);
+        ctx.restore();
+        });
+        }
+
+        ctx.fillStyle = '#192d4d';
+        ctx.strokeStyle = 'rgba(220, 232, 245, 0.65)';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 935);
+        ctx.bezierCurveTo(260, 925, 480, 1060, 760, 1180);
+        ctx.lineTo(0, 1180);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(1600, 945);
+        ctx.bezierCurveTo(1320, 910, 960, 1070, 560, 1180);
+        ctx.lineTo(1600, 1180);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // 6. 中央白色石质喷泉底座
+        ctx.save();
+        const fCx = 800;
+        const bowlTopY = 805;
+
+        const stemGrad = ctx.createLinearGradient(fCx - 75, 0, fCx + 75, 0);
+        stemGrad.addColorStop(0, '#cbd5e1');
+        stemGrad.addColorStop(0.5, '#f8fafc');
+        stemGrad.addColorStop(1, '#94a3b8');
+        ctx.fillStyle = stemGrad;
+        ctx.beginPath();
+        ctx.moveTo(fCx - 52, bowlTopY + 135);
+        ctx.quadraticCurveTo(fCx - 45, bowlTopY + 250, fCx - 82, 1120);
+        ctx.lineTo(fCx + 82, 1120);
+        ctx.quadraticCurveTo(fCx + 45, bowlTopY + 250, fCx + 52, bowlTopY + 135);
+        ctx.closePath();
+        ctx.fill();
+
+        const bowlGrad = ctx.createLinearGradient(fCx - 290, bowlTopY, fCx + 290, bowlTopY + 145);
+        bowlGrad.addColorStop(0, '#e2e8f0');
+        bowlGrad.addColorStop(0.45, '#f8fafc');
+        bowlGrad.addColorStop(1, '#94a3b8');
+        ctx.fillStyle = bowlGrad;
+        ctx.beginPath();
+        ctx.moveTo(fCx - 285, bowlTopY + 28);
+        ctx.quadraticCurveTo(fCx - 260, bowlTopY + 145, fCx, bowlTopY + 145);
+        ctx.quadraticCurveTo(fCx + 260, bowlTopY + 145, fCx + 285, bowlTopY + 28);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.fillRect(fCx - 310, bowlTopY, 620, 16);
+        ctx.strokeRect(fCx - 310, bowlTopY, 620, 16);
+        ctx.fillRect(fCx - 298, bowlTopY + 16, 596, 12);
+        ctx.strokeRect(fCx - 298, bowlTopY + 16, 596, 12);
+        ctx.restore();
+
+        // 7. 乌鸦与栖息木桩
+        ctx.save();
+        ctx.fillStyle = isHealed ? '#e2e8f0' : '#94a3b8';
+        ctx.fillRect(fCx - 12, 420, 24, 385);
+        ctx.beginPath();
+        ctx.roundRect(fCx - 58, 705, 116, 16, 8);
+        ctx.fill();
+
+        ctx.save();
+        ctx.translate(fCx - 6, 610);
+        if (isHealed) {
+        ctx.shadowBlur = 32;
+        ctx.shadowColor = '#fef08a';
+        ctx.fillStyle = '#fefce8';
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 3;
+        } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.5;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(-42, -92);
+        ctx.lineTo(-82, -82);
+        ctx.lineTo(-44, -68);
+        ctx.bezierCurveTo(-48, -20, -25, 45, 25, 78);
+        ctx.lineTo(132, 168);
+        ctx.lineTo(155, 152);
+        ctx.lineTo(95, 72);
+        ctx.bezierCurveTo(68, 10, 35, -55, -5, -92);
+        ctx.bezierCurveTo(-20, -104, -34, -102, -42, -92);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = isHealed ? '#fde047' : '#64748b';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(5, 75);
+        ctx.lineTo(-2, 102);
+        ctx.moveTo(22, 82);
+        ctx.lineTo(18, 102);
+        ctx.stroke();
+        ctx.restore();
+
+        if (isHealed) {
+        drawCageDomeOnly(ctx, fCx, 175);
+        }
+        ctx.restore();
+        }
+
+        // 绘制白色鸟笼顶盖
+        function drawCageDomeOnly(ctx, cx, topY) {
+        ctx.save();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.arc(cx, topY + 12, 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 18, topY + 62);
+        ctx.quadraticCurveTo(cx - 8, topY + 35, cx, topY + 22);
+        ctx.quadraticCurveTo(cx + 8, topY + 35, cx + 18, topY + 62);
+        ctx.fill();
+        ctx.fillRect(cx - 28, topY + 62, 56, 12);
+
+        const domeW = 215;
+        const domeBaseY = topY + 235;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(cx - domeW, domeBaseY);
+        ctx.bezierCurveTo(cx - domeW, topY + 95, cx - 70, topY + 72, cx, topY + 72);
+        ctx.bezierCurveTo(cx + 70, topY + 72, cx + domeW, topY + 95, cx + domeW, domeBaseY);
+        ctx.stroke();
+
+        const ratios = [-0.85, -0.68, -0.5, -0.32, -0.15, 0, 0.15, 0.32, 0.5, 0.68, 0.85];
+        ratios.forEach(r => {
+        ctx.lineWidth = 4.2;
+        ctx.beginPath();
+        ctx.moveTo(cx, topY + 74);
+        ctx.bezierCurveTo(
+        cx + r * domeW * 0.45, topY + 76,
+        cx + r * domeW, topY + 115,
+        cx + r * domeW, domeBaseY
+        );
+        ctx.stroke();
+        });
+
+        ctx.fillStyle = '#f1f5f9';
+        ctx.fillRect(cx - domeW - 16, domeBaseY, (domeW + 16) * 2, 16);
+        ctx.fillRect(cx - domeW - 6, domeBaseY + 16, (domeW + 6) * 2, 10);
+        ctx.restore();
+        }
+
+        // 生成离线 Canvas 数据 URL
+        function buildGeneratedLayers() {
+        const c1 = document.createElement('canvas');
+        c1.width = ART_W; c1.height = ART_H;
+        drawSharedLandscape(c1.getContext('2d'), false);
+
+        const c2 = document.createElement('canvas');
+        c2.width = ART_W; c2.height = ART_H;
+        drawSharedLandscape(c2.getContext('2d'), true);
+
+        const cCage = document.createElement('canvas');
+        cCage.width = ART_W; cCage.height = ART_H;
+        const cageCtxOff = cCage.getContext('2d');
+        const cx = 800;
+        const topY = 175;
+        drawCageDomeOnly(cageCtxOff, cx, topY);
+
+        const bodyTop = topY + 260;
+        const bodyBot = 804;
+        const halfW = 205;
+        cageCtxOff.strokeStyle = '#f1f5f9';
+        cageCtxOff.fillStyle = '#e2e8f0';
+
+        const barPos = [-1, -0.82, -0.64, -0.45, -0.24, 0, 0.24, 0.45, 0.64, 0.82, 1];
+        barPos.forEach(r => {
+        cageCtxOff.lineWidth = Math.abs(r) === 1 ? 10 : 5.5;
+        ctxBeginLine(cageCtxOff, cx + r * halfW, bodyTop, cx + r * halfW, bodyBot);
+        });
+
+        cageCtxOff.fillRect(cx - halfW - 6, (bodyTop + bodyBot) * 0.52, (halfW + 6) * 2, 12);
+        cageCtxOff.fillRect(cx - halfW - 10, bodyBot - 12, (halfW + 10) * 2, 14);
+
+        const cWater = document.createElement('canvas');
+        cWater.width = ART_W; cWater.height = ART_H;
+        const wCtx = cWater.getContext('2d');
+        wCtx.save();
+        wCtx.strokeStyle = '#5bb8e8';
+        wCtx.fillStyle = '#5bb8e8';
+        wCtx.lineCap = 'round';
+
+        wCtx.fillRect(515, 792, 570, 14);
+
+        const streams = [
+        { sx: 685, sy: 796, cpx: 540, cpy: 685, ex: 455, ey: 1120, w: 15 },
+        { sx: 735, sy: 796, cpx: 625, cpy: 720, ex: 575, ey: 1120, w: 12 },
+        { sx: 865, sy: 796, cpx: 975, cpy: 720, ex: 1025, ey: 1120, w: 12 },
+        { sx: 915, sy: 796, cpx: 1060, cpy: 685, ex: 1145, ey: 1120, w: 15 }
+        ];
+        streams.forEach(s => {
+        wCtx.lineWidth = s.w;
+        wCtx.beginPath();
+        wCtx.moveTo(s.sx, s.sy);
+        wCtx.quadraticCurveTo(s.cpx, s.cpy, s.ex, s.ey);
+        wCtx.stroke();
+        });
+
+        const droplets = [
+        [565, 845], [562, 875], [559, 905], [556, 935], [553, 965],
+        [1035, 845], [1038, 875], [1041, 905], [1044, 935], [1047, 965]
+        ];
+        droplets.forEach(([dx, dy]) => {
+        wCtx.beginPath();
+        wCtx.arc(dx, dy, 6.5, 0, Math.PI * 2);
+        wCtx.fill();
+        });
+        wCtx.restore();
+
+        return {
+        initialUrl: c1.toDataURL('image/png'),
+        healedUrl: c2.toDataURL('image/png'),
+        cageCanvas: cCage,
+        fountainUrl: cWater.toDataURL('image/png')
+        };
+        }
+
+        function ctxBeginLine(ctx, x1, y1, x2, y2) {
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        }
+
+        const generated = buildGeneratedLayers();
+
+        document.getElementById('bg-initial').style.backgroundImage = `url('${BG_INITIAL_SRC || generated.initialUrl}')`;
+        document.getElementById('bg-healed').style.backgroundImage  = `url('${BG_HEALED_SRC || generated.healedUrl}')`;
+        document.getElementById('fountain-front').style.backgroundImage = `url('${FOUNTAIN_FRONT_SRC || generated.fountainUrl}')`;
+
+        let cageSource = generated.cageCanvas;
+        if (CAGE_PNG_SRC) {
+        const customImg = new Image();
+        customImg.onload = () => { cageSource = customImg; };
+        customImg.src = CAGE_PNG_SRC;
+        }
+
+        /* ==================== 2. 下雨特效 ==================== */
+        const rainLayer = document.getElementById('rain-layer');
+        for (let i = 0; i < 80; i++) {
+        const drop = document.createElement('div');
+        drop.className = 'raindrop';
+        drop.style.left = `${Math.random() * 112}%`;
+        drop.style.animationDuration = `${0.5 + Math.random() * 0.4}s`;
+        drop.style.animationDelay = `${Math.random() * -2}s`;
+        drop.style.opacity = `${0.28 + Math.random() * 0.5}`;
+        rainLayer.appendChild(drop);
+        }
+
+        /* ==================== 3. 鸟笼整笼连贯左右弯曲扭动引擎 ==================== */
+        const cageCanvas = document.getElementById('cage-canvas');
+        const cageCtx = cageCanvas.getContext('2d');
+        const fxCanvas = document.getElementById('fx-canvas');
+        const fxCtx = fxCanvas.getContext('2d');
+
+        let W = window.innerWidth;
+        let H = window.innerHeight;
+
+        function resize() {
+        W = window.innerWidth;
+        H = window.innerHeight;
+        cageCanvas.width = fxCanvas.width = W;
+        cageCanvas.height = fxCanvas.height = H;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let bendX = 0;
+        let bendVel = 0;
+        let hitGlow = 0;
+        let isBroken = false;
+        let endingTimer = null;
+
+        let mirrorShards = [];
+
+        const CAGE_TOP_T = 0.34;
+        const CAGE_BOT_T = 0.67;
+        function getCageOffsetX(t) {
+        if (t <= CAGE_TOP_T || t >= CAGE_BOT_T) return 0;
+        const u = (t - CAGE_TOP_T) / (CAGE_BOT_T - CAGE_TOP_T);
+        return bendX * Math.sin(u * Math.PI);
+        }
+
+        function getCoverRect(srcW, srcH) {
+        const scale = Math.max(W / srcW, H / srcH);
+        const drawW = srcW * scale;
+        const drawH = srcH * scale;
+        return {
+        x: (W - drawW) / 2,
+        y: (H - drawH) / 2,
+        w: drawW,
+        h: drawH
+        };
+        }
+
+        function createMirrorShatterShards() {
+        mirrorShards = [];
+        const srcW = cageSource.naturalWidth || cageSource.width;
+        const srcH = cageSource.naturalHeight || cageSource.height;
+        if (!srcW || !srcH) return;
+
+        const rect = getCoverRect(srcW, srcH);
+
+        const centerX = W * 0.5;
+        const centerY = rect.y + rect.h * 0.45;
+
+        const numRays = 18;
+        const angles = [];
+        for (let i = 0; i < numRays; i++) {
+        angles.push((i / numRays) * Math.PI * 2 + (Math.random() - 0.5) * 0.16);
+        }
+        angles.sort((a, b) => a - b);
+
+        const maxR = Math.max(rect.w, rect.h) * 0.48;
+        const ringRadii = [0, maxR * 0.16, maxR * 0.34, maxR * 0.58, maxR * 0.95];
+
+        const grid = [];
+        for (let rIdx = 0; rIdx < ringRadii.length; rIdx++) {
+        const ringPts = [];
+        for (let aIdx = 0; aIdx < numRays; aIdx++) {
+        if (rIdx === 0) {
+        ringPts.push({ x: centerX, y: centerY });
+        } else {
+        const rJitter = ringRadii[rIdx] * (0.86 + Math.random() * 0.28);
+        const aJitter = angles[aIdx] + (Math.random() - 0.5) * 0.08;
+        ringPts.push({
+        x: centerX + Math.cos(aJitter) * rJitter,
+        y: centerY + Math.sin(aJitter) * rJitter
+        });
+        }
+        }
+        grid.push(ringPts);
+        }
+
+        for (let rIdx = 0; rIdx < ringRadii.length - 1; rIdx++) {
+        for (let aIdx = 0; aIdx < numRays; aIdx++) {
+        const nextA = (aIdx + 1) % numRays;
+        const p00 = grid[rIdx][aIdx];
+        const p01 = grid[rIdx][nextA];
+        const p11 = grid[rIdx + 1][nextA];
+        const p10 = grid[rIdx + 1][aIdx];
+
+        const poly = rIdx === 0 ? [p00, p10, p11] : [p00, p10, p11, p01];
+
+        let cx = 0, cy = 0;
+        poly.forEach(pt => { cx += pt.x; cy += pt.y; });
+        cx /= poly.length;
+        cy /= poly.length;
+
+        if (Math.abs(cx - centerX) > rect.w * 0.32 || Math.abs(cy - centerY) > rect.h * 0.38) {
+        continue;
+        }
+
+        const outAngle = Math.atan2(cy - centerY, cx - centerX) + (Math.random() - 0.5) * 0.35;
+        const distRatio = Math.hypot(cx - centerX, cy - centerY) / maxR;
+        const speed = (3.5 + (1 - distRatio) * 7.5) * (0.75 + Math.random() * 0.55);
+
+        mirrorShards.push({
+        poly,
+        cx,
+        cy,
+        x: cx,
+        y: cy,
+        vx: Math.cos(outAngle) * speed,
+        vy: Math.sin(outAngle) * speed - (1.8 + Math.random() * 2.5),
+        gravity: 0.22 + Math.random() * 0.12,
+        rot: 0,
+        vRot: (Math.random() - 0.5) * 0.16,
+        flipAngle: Math.random() * Math.PI,
+        vFlip: (Math.random() - 0.5) * 0.14,
+        glintPhase: Math.random() * Math.PI * 2,
+        life: 1.0,
+        decay: 0.011 + Math.random() * 0.008,
+        rect
+        });
+        }
+        }
+        }
+
+        function renderMirrorShards() {
+        if (mirrorShards.length === 0) return;
+
+        for (let i = mirrorShards.length - 1; i >= 0; i--) {
+        const s = mirrorShards[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vy += s.gravity;
+        s.vx *= 0.985;
+        s.rot += s.vRot;
+        s.flipAngle += s.vFlip;
+        s.glintPhase += 0.22;
+        s.life -= s.decay;
+
+        if (s.life <= 0) {
+        mirrorShards.splice(i, 1);
+        continue;
+        }
+
+        cageCtx.save();
+        cageCtx.globalAlpha = Math.max(0, s.life);
+        cageCtx.translate(s.x, s.y);
+        cageCtx.rotate(s.rot);
+        const scaleX = 0.45 + 0.55 * Math.abs(Math.cos(s.flipAngle));
+        cageCtx.scale(scaleX, 1);
+
+        cageCtx.beginPath();
+        s.poly.forEach((pt, idx) => {
+        const lx = pt.x - s.cx;
+        const ly = pt.y - s.cy;
+        if (idx === 0) cageCtx.moveTo(lx, ly);
+        else cageCtx.lineTo(lx, ly);
+        });
+        cageCtx.closePath();
+
+        cageCtx.save();
+        cageCtx.clip();
+        cageCtx.drawImage(
+        cageSource,
+        s.rect.x - s.cx,
+        s.rect.y - s.cy,
+        s.rect.w,
+        s.rect.h
+        );
+
+        const glint = Math.max(0, Math.sin(s.glintPhase));
+        cageCtx.fillStyle = `rgba(240, 249, 255, ${0.18 + glint * 0.48})`;
+        cageCtx.fillRect(-150, -150, 300, 300);
+        cageCtx.restore();
+
+        cageCtx.strokeStyle = `rgba(255, 255, 255, ${0.75 * s.life})`;
+        cageCtx.lineWidth = 1.4;
+        cageCtx.shadowBlur = 10;
+        cageCtx.shadowColor = 'rgba(224, 242, 254, 0.9)';
+        cageCtx.stroke();
+
+        cageCtx.restore();
+        }
+        }
+
+        function renderCage() {
+        cageCtx.clearRect(0, 0, W, H);
+
+        if (isBroken) {
+        renderMirrorShards();
+        return;
+        }
+
+        const stiffness = 0.14;
+        const damping = 0.82;
+        bendVel = (bendVel - stiffness * bendX) * damping;
+        bendX += bendVel;
+        hitGlow = Math.max(0, hitGlow - 0.055);
+
+        const srcW = cageSource.naturalWidth || cageSource.width;
+        const srcH = cageSource.naturalHeight || cageSource.height;
+        if (!srcW || !srcH) return;
+
+        const rect = getCoverRect(srcW, srcH);
+        const slices = 120;
+        const srcSliceH = srcH / slices;
+        const dstSliceH = rect.h / slices;
+
+        cageCtx.save();
+
+        if (hitGlow > 0.01) {
+        cageCtx.filter = `brightness(${1 + hitGlow * 0.95}) drop-shadow(0 0 ${hitGlow * 22}px rgba(254, 240, 138, 0.95))`;
+        }
+
+        for (let i = 0; i < slices; i++) {
+        const t = i / slices;
+        const offsetX = getCageOffsetX(t);
+
+        cageCtx.drawImage(
+        cageSource,
+        0, i * srcSliceH, srcW, srcSliceH + 0.6,
+        rect.x + offsetX, rect.y + i * dstSliceH, rect.w, dstSliceH + 0.6
+        );
+        }
+
+        cageCtx.restore();
+        }
+
+        /* ==================== 4. 滑动刀痕、金色火花与 5 次破笼判定 ==================== */
+        const REQUIRED_HITS = 5;
+        let hits = 0;
+        let isDown = false;
+        let lastPos = null;
+        let strokeDist = 0;
+        let countedThisStroke = false;
+        let strokeId = 0;
+
+        let trail = [];
+        let sparks = [];
+
+        function spawnSparks(x, y, count) {
+        for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 6.8;
+        sparks.push({
+        x, y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - 1.5,
+        life: 1,
+        decay: 0.022 + Math.random() * 0.025,
+        size: 1.6 + Math.random() * 2.8
+        });
+        }
+        }
+
+        function renderFX() {
+        fxCtx.clearRect(0, 0, W, H);
+        fxCtx.save();
+        fxCtx.globalCompositeOperation = 'lighter';
+
+        for (let i = trail.length - 1; i >= 0; i--) {
+        const p = trail[i];
+        p.life -= 0.055;
+        if (p.life <= 0) { trail.splice(i, 1); continue; }
+        if (i > 0 && trail[i - 1].id === p.id) {
+        fxCtx.beginPath();
+        fxCtx.moveTo(trail[i - 1].x, trail[i - 1].y);
+        fxCtx.lineTo(p.x, p.y);
+        fxCtx.lineCap = 'round';
+        fxCtx.lineWidth = p.life * 9;
+        fxCtx.strokeStyle = `rgba(254, 240, 138, ${p.life * 0.88})`;
+        fxCtx.shadowBlur = 18;
+        fxCtx.shadowColor = '#facc15';
+        fxCtx.stroke();
+
+        fxCtx.lineWidth = p.life * 3;
+        fxCtx.strokeStyle = `rgba(255, 255, 255, ${p.life})`;
+        fxCtx.stroke();
+        }
+        }
+
+        for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vy += 0.16;
+        s.life -= s.decay;
+        if (s.life <= 0) { sparks.splice(i, 1); continue; }
+
+        fxCtx.fillStyle = `rgba(254, 243, 199, ${s.life})`;
+        fxCtx.shadowBlur = 10;
+        fxCtx.shadowColor = '#f59e0b';
+        fxCtx.beginPath();
+        fxCtx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        fxCtx.fill();
+        }
+        fxCtx.restore();
+        }
+
+        function loop() {
+        renderCage();
+        renderFX();
+        requestAnimationFrame(loop);
+        }
+
+        function triggerBreak() {
+        if (isBroken) return;
+        isBroken = true;
+
+        try {
+        sessionStorage.setItem('crow_done', 'true');
+        } catch (e) {}
+
+        createMirrorShatterShards();
+
+        const flash = document.getElementById('screen-flash');
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 130);
+
+        rainLayer.classList.add('stopped');
+        document.getElementById('bg-initial').classList.add('fade-out');
+        document.getElementById('fountain-front').classList.add('fade-out');
+        document.getElementById('hud-tip').style.opacity = '0';
+
+        spawnSparks(W / 2, H * 0.45, 75);
+
+        document.body.style.cursor = 'default';
+        customCursor.style.display = 'none';
+
+        endingTimer = setTimeout(() => {
+        document.getElementById('ending-panel').classList.add('visible');
+        }, 1050);
+        }
+
+        function returnToForest() {
+        try {
+        sessionStorage.setItem('crow_done', 'true');
+        } catch (e) {}
+        window.location.href = 'HTMLPage1.html?from=crow';
+        }
+
+        /* ==================== 5. 鼠标与触摸事件绑定 ==================== */
+        const customCursor = document.getElementById('custom-cursor');
+
+        let targetX = window.innerWidth / 2;
+        let targetY = window.innerHeight / 2;
+        let currentX = targetX;
+        let currentY = targetY;
+        let currentSpeed = 0;
+        let currentAngle = 0;
+
+        window.addEventListener('mousemove', (e) => {
+        if (isBroken) return;
+        targetX = e.clientX;
+        targetY = e.clientY;
+        });
+
+        function lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+        }
+
+        function updateCursorStretch() {
+        const customCursor = document.getElementById('custom-cursor');
+        if (isBroken) {
+        requestAnimationFrame(updateCursorStretch);
+        return;
+        }
+
+        const prevX = currentX;
+        const prevY = currentY;
+
+        currentX = lerp(currentX, targetX, 0.2);
+        currentY = lerp(currentY, targetY, 0.2);
+
+        const dx = currentX - prevX;
+        const dy = currentY - prevY;
+        const instantSpeed = Math.sqrt(dx * dx + dy * dy);
+
+        currentSpeed = lerp(currentSpeed, instantSpeed, 0.15);
+
+        if (instantSpeed > 0.1) {
+        const targetAngle = Math.atan2(dy, dx);
+        let deltaAngle = targetAngle - currentAngle;
+        while (deltaAngle < -Math.PI) deltaAngle += Math.PI * 2;
+        while (deltaAngle > Math.PI) deltaAngle -= Math.PI * 2;
+        currentAngle += deltaAngle * 0.2;
+        }
+
+        const maxSpeed = 30;
+        const speedFactor = Math.min(currentSpeed / maxSpeed, 0.75);
+        const scaleX = 1 + speedFactor * 0.8;
+        const scaleY = 1 - speedFactor * 0.45;
+
+        customCursor.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) translate(-50%, -50%) rotate(${currentAngle}rad) scale(${scaleX}, ${scaleY})`;
+
+        requestAnimationFrame(updateCursorStretch);
+        }
+
+        requestAnimationFrame(updateCursorStretch);
+
+        function getPos(e) {
+        return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
+        }
+
+        function onStart(e) {
+        if (isBroken) return;
+        isDown = true;
+        strokeId++;
+        strokeDist = 0;
+        countedThisStroke = false;
+        lastPos = getPos(e);
+        }
+
+        function onMove(e) {
+        const pos = getPos(e);
+
+        if (!isDown || isBroken || !lastPos) return;
+        if (e.cancelable) e.preventDefault();
+
+        const dx = pos.x - lastPos.x;
+        const dy = pos.y - lastPos.y;
+        trail.push({ x: pos.x, y: pos.y, life: 1, id: strokeId });
+
+        if (Math.abs(pos.x - W / 2) < W * 0.26 && pos.y > H * 0.14 && pos.y < H * 0.72) {
+        bendVel += Math.max(-36, Math.min(36, dx)) * 0.48;
+        spawnSparks(pos.x, pos.y, 4);
+
+        strokeDist += Math.hypot(dx, dy);
+        if (!countedThisStroke && strokeDist >= 75) {
+        countedThisStroke = true;
+        hits++;
+        hitGlow = 1;
+        document.getElementById('hit-num').textContent = Math.min(hits, REQUIRED_HITS);
+        spawnSparks(pos.x, pos.y, 24);
+        if (hits >= REQUIRED_HITS) triggerBreak();
+        }
+        }
+        lastPos = pos;
+        }
+
+        function onEnd() {
+        isDown = false;
+        lastPos = null;
+        }
+
+        fxCanvas.addEventListener('mousedown', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
+        fxCanvas.addEventListener('touchstart', onStart, { passive: false });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onEnd);
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

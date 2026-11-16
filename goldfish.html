@@ -1,0 +1,913 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Goldfish Gate · Ripples & Moments</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <style>
+        @font-face {
+            font-family: 'CHI_Bottoms';
+            src: url('CHI_Bottoms.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b1320;
+            font-family: "CHI_Bottoms", "Georgia", serif;
+        }
+
+        /* ==================== 1. 局部液化水波画布层（四周蓝色区域完全静止） ==================== */
+        #liquid-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 1;
+        }
+
+        /* ==================== 2. 最前面阶段：低透明度水波焦散光影 + 鼠标虹彩涟漪层 ==================== */
+        #caustic-ripple-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            z-index: 3;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 2.2s ease;
+        }
+
+            #caustic-ripple-canvas.receded {
+                opacity: 0;
+            }
+
+        /* ==================== 3. 极简空心圆圈泡泡层（复刻参考图构图分布） ==================== */
+        #bubble-layer {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 5;
+            overflow: hidden;
+            transition: opacity 1.6s ease;
+        }
+
+            #bubble-layer.receded {
+                opacity: 0;
+                pointer-events: none;
+            }
+
+        .flat-bubble {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: var(--size, 64px);
+            height: var(--size, 64px);
+            margin-left: calc(var(--size, 64px) * -0.5);
+            margin-top: calc(var(--size, 64px) * -0.5);
+            border-radius: 50%;
+            cursor: pointer;
+            background: transparent;
+            border: var(--stroke, 2.5px) solid rgba(255, 253, 244, var(--alpha, 0.88));
+            will-change: transform, opacity;
+            transition: border-color 0.25s ease, opacity 0.45s ease;
+        }
+
+            .flat-bubble::after {
+                content: '';
+                position: absolute;
+                inset: -14px;
+                border-radius: 50%;
+            }
+
+            .flat-bubble:hover {
+                border-color: rgba(255, 255, 255, 1);
+            }
+
+        .flat-pop-ring {
+            position: fixed;
+            width: var(--ring-size, 64px);
+            height: var(--ring-size, 64px);
+            border-radius: 50%;
+            border: var(--ring-stroke, 2.5px) solid rgba(255, 253, 244, 0.92);
+            transform: translate(-50%, -50%) scale(0.9);
+            pointer-events: none;
+            z-index: 8;
+            animation: flatPopExpand 0.48s ease-out forwards;
+        }
+
+        @keyframes flatPopExpand {
+            0% {
+                transform: translate(-50%, -50%) scale(0.9);
+                opacity: 0.95;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) scale(1.65);
+                opacity: 0;
+            }
+        }
+
+        /* ==================== 4. 顶部进度提示栏 ==================== */
+        #hud-bar {
+            position: fixed;
+            top: 18px;
+            left: 20px;
+            right: 20px;
+            z-index: 12;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+
+        .hud-pill {
+            padding: 7px 18px;
+            border-radius: 999px;
+            background: rgba(11, 21, 38, 0.68);
+            border: 1px solid rgba(255, 253, 240, 0.3);
+            color: #e2e8f0;
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.08em;
+            transition: opacity 0.8s ease;
+        }
+
+            .hud-pill strong {
+                color: #fef9c3;
+            }
+
+        /* ==================== 5. 通关文案（两行收于红框范围内，逐字模糊浮现）与返回按钮 ==================== */
+        #ending-panel {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #ending-quote {
+            position: absolute;
+            top: 6.5%;
+            left: 53.5%;
+            transform: translateX(-50%);
+            width: 62%;
+            max-width: 680px;
+            text-align: center;
+            color: #fffdf5;
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-size: clamp(0.95rem, 1.95vw, 1.38rem);
+            letter-spacing: 0.07em;
+            line-height: 1.55;
+            text-shadow: 0 2px 14px rgba(8, 16, 30, 0.92), 0 0 24px rgba(254, 249, 195, 0.55);
+        }
+
+        .quote-line {
+            display: block;
+        }
+
+        .quote-word {
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .quote-char {
+            display: inline-block;
+            opacity: 0;
+            will-change: transform, opacity, filter;
+        }
+
+        #btn-continue {
+            position: absolute;
+            bottom: 7.5%;
+            left: 50%;
+            transform: translate(-50%, 10px);
+            padding: 12px 40px;
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-size: 1.02rem;
+            letter-spacing: 0.14em;
+            color: #fef9c3;
+            background: rgba(12, 24, 42, 0.55);
+            border: 1.5px solid rgba(254, 249, 195, 0.78);
+            border-radius: 999px;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.4s ease, transform 1.4s ease, background 0.35s ease, color 0.35s ease;
+        }
+
+            #btn-continue.fade-in {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translate(-50%, 0);
+            }
+
+                #btn-continue.fade-in:hover {
+                    background: #fef9c3;
+                    color: #0f172a;
+                    transform: translate(-50%, 0) scale(1.05);
+                }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 局部液化水波画布（四周蓝色区域完全静止） -->
+    <canvas id="liquid-canvas"></canvas>
+
+    <!-- 2. 最前面阶段：低透明度水光焦散波纹 + 鼠标滑动虹彩涟漪交互层 -->
+    <canvas id="caustic-ripple-canvas"></canvas>
+
+    <!-- 3. 极简空心圆圈泡泡层 -->
+    <div id="bubble-layer"></div>
+
+    <!-- 4. 顶部进度提示栏 -->
+    <div id="hud-bar">
+        <div id="hud-tip" class="hud-pill">
+            Glide across the water · Pop the circles: <strong id="pop-count">0</strong> / 5
+        </div>
+    </div>
+
+    <!-- 5. 通关诗句（两行居中于红框内）与返回按钮 -->
+    <div id="ending-panel">
+        <p id="ending-quote">
+            <span class="quote-line">Every moment is a new beginning,</span>
+            <span class="quote-line">and a sudden goodbye.</span>
+        </p>
+        <button id="btn-continue" onclick="returnToHub()">Keep Going</button>
+    </div>
+
+    <script>
+        /* =========================================================================
+        【素材配置区】与 goldfish.html 同目录的 goldfish_bg.png
+        ========================================================================= */
+        const BG_IMAGE_SRC = 'goldfish_bg.png';
+        const REQUIRED_POPS = 5;
+
+        const canvas = document.getElementById('liquid-canvas');
+        const ctx = canvas.getContext('2d');
+        const causticCanvas = document.getElementById('caustic-ripple-canvas');
+        const cCtx = causticCanvas.getContext('2d');
+        const bubbleLayer = document.getElementById('bubble-layer');
+        const hudTip = document.getElementById('hud-tip');
+        const popCountEl = document.getElementById('pop-count');
+        const endingQuote = document.getElementById('ending-quote');
+        const btnContinue = document.getElementById('btn-continue');
+
+        let vw = window.innerWidth;
+        let vh = window.innerHeight;
+        let poppedCount = 0;
+        let isCleared = false;
+        let endingTimers = [];
+
+        const staticBuffer = document.createElement('canvas');
+        const staticCtx = staticBuffer.getContext('2d');
+        const midBuffer = document.createElement('canvas');
+        const midCtx = midBuffer.getContext('2d');
+        const warpedBuffer = document.createElement('canvas');
+        const warpedCtx = warpedBuffer.getContext('2d');
+        const maskBuffer = document.createElement('canvas');
+        const maskCtx = maskBuffer.getContext('2d');
+
+        let bgImg = new Image();
+        let bgLoaded = false;
+
+        let drawBox = { x: 0, y: 0, w: vw, h: vh };
+
+        // 液化波浪状态参数
+        const waveState = {
+        amplitude: 1.0,
+        scrollPhase: 0.0,
+        scrollVel: 0.0,
+        time: 0.0
+        };
+
+        /* ==================== 构建中间水域柔边遮罩（确保蓝色区域与四周完全静止不动） ==================== */
+        function rebuildCenterWaterMask() {
+        maskBuffer.width = vw;
+        maskBuffer.height = vh;
+        maskCtx.clearRect(0, 0, vw, vh);
+
+        const { x, y, w, h } = drawBox;
+        maskCtx.save();
+        maskCtx.filter = 'blur(12px)';
+        maskCtx.fillStyle = '#ffffff';
+        maskCtx.beginPath();
+
+        const padX = w * 0.035;
+        const padY = h * 0.035;
+
+        maskCtx.moveTo(x + w * 0.45, y + padY);
+        maskCtx.lineTo(x + w - padX, y + padY);
+        maskCtx.lineTo(x + w - padX, y + h * 0.44);
+        maskCtx.quadraticCurveTo(
+        x + w * 0.72, y + h * 0.64,
+        x + w * 0.63, y + h - padY
+        );
+        maskCtx.lineTo(x + padX, y + h - padY);
+        maskCtx.lineTo(x + padX, y + h * 0.43);
+        maskCtx.quadraticCurveTo(
+        x + w * 0.28, y + h * 0.25,
+        x + w * 0.45, y + padY
+        );
+
+        maskCtx.closePath();
+        maskCtx.fill();
+        maskCtx.restore();
+        }
+
+        function rebuildBuffers() {
+        vw = window.innerWidth;
+        vh = window.innerHeight;
+        canvas.width = vw;
+        canvas.height = vh;
+        causticCanvas.width = vw;
+        causticCanvas.height = vh;
+        staticBuffer.width = vw;
+        staticBuffer.height = vh;
+        midBuffer.width = vw;
+        midBuffer.height = vh;
+        warpedBuffer.width = vw;
+        warpedBuffer.height = vh;
+
+        if (!bgLoaded) return;
+
+        const iw = bgImg.naturalWidth || 1600;
+        const ih = bgImg.naturalHeight || 900;
+        const scale = Math.max(vw / iw, vh / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        const dx = (vw - dw) * 0.5;
+        const dy = (vh - dh) * 0.5;
+
+        drawBox = { x: dx, y: dy, w: dw, h: dh };
+
+        staticCtx.clearRect(0, 0, vw, vh);
+        staticCtx.drawImage(bgImg, dx, dy, dw, dh);
+
+        rebuildCenterWaterMask();
+        updateBubbleAnchors();
+        }
+
+        /* ==================== 一、局部液化大波浪渲染 ==================== */
+        function renderLiquidFrame() {
+        waveState.time += 0.024;
+        waveState.scrollVel *= 0.92;
+        waveState.scrollPhase += waveState.scrollVel;
+
+        if (!bgLoaded) {
+        requestAnimationFrame(renderLiquidFrame);
+        return;
+        }
+
+        ctx.clearRect(0, 0, vw, vh);
+        ctx.drawImage(staticBuffer, 0, 0);
+
+        const amp = waveState.amplitude;
+        if (amp <= 0.002) {
+        requestAnimationFrame(renderLiquidFrame);
+        return;
+        }
+
+        const phase = waveState.time + waveState.scrollPhase;
+        const surgeBoost = 1 + Math.min(Math.abs(waveState.scrollVel) * 0.65, 1.0);
+
+        const maxShiftX = vw * 0.024 * amp * surgeBoost;
+        const sliceH = 3;
+        midCtx.clearRect(0, 0, vw, vh);
+
+        for (let y = 0; y < vh; y += sliceH) {
+        const ny = y / vh;
+        const edgeY = Math.sin(Math.PI * Math.min(1, Math.max(0, ny)));
+        const wave = Math.sin(ny * Math.PI * 3.2 + phase) * 0.72
+        + Math.cos(ny * Math.PI * 1.8 - phase * 0.7) * 0.28;
+        const offsetX = wave * maxShiftX * edgeY;
+        midCtx.drawImage(staticBuffer, 0, y, vw, sliceH, offsetX, y, vw, sliceH);
+        }
+
+        const maxShiftY = vh * 0.024 * amp * surgeBoost;
+        const sliceW = 3;
+        warpedCtx.clearRect(0, 0, vw, vh);
+
+        for (let x = 0; x < vw; x += sliceW) {
+        const nx = x / vw;
+        const edgeX = Math.sin(Math.PI * Math.min(1, Math.max(0, nx)));
+        const wave = Math.cos(nx * Math.PI * 3.0 - phase * 0.9) * 0.72
+        + Math.sin(nx * Math.PI * 1.6 + phase * 0.65) * 0.28;
+        const offsetY = wave * maxShiftY * edgeX;
+        warpedCtx.drawImage(midBuffer, x, 0, sliceW, vh, x, offsetY, sliceW, vh);
+        }
+
+        warpedCtx.globalCompositeOperation = 'destination-in';
+        warpedCtx.drawImage(maskBuffer, 0, 0);
+        warpedCtx.globalCompositeOperation = 'source-over';
+
+        ctx.drawImage(warpedBuffer, 0, 0);
+
+        requestAnimationFrame(renderLiquidFrame);
+        }
+
+        /* ==================== 二、上下滑动水波推进交互 ==================== */
+        window.addEventListener('wheel', (e) => {
+        if (isCleared) return;
+        waveState.scrollVel += e.deltaY * 0.0055;
+        }, { passive: true });
+
+        let lastPointerY = null;
+        window.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) lastPointerY = e.touches[0].clientY;
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+        if (isCleared || lastPointerY === null) return;
+        const currentY = e.touches[0].clientY;
+        const dy = lastPointerY - currentY;
+        lastPointerY = currentY;
+        waveState.scrollVel += dy * 0.026;
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => { lastPointerY = null; });
+
+        window.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('flat-bubble')) return;
+        lastPointerY = e.clientY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+        if (isCleared || lastPointerY === null) return;
+        const dy = lastPointerY - e.clientY;
+        lastPointerY = e.clientY;
+        waveState.scrollVel += dy * 0.018;
+        });
+
+        window.addEventListener('mouseup', () => { lastPointerY = null; });
+
+        /* ==================== 三、精准复刻参考图的 9 个空心圆圈分布与轻柔原位悬浮 ==================== */
+        const BUBBLE_LAYOUT = [
+        { u: 0.405, v: 0.215, sizeRatio: 0.115, stroke: 3.2, alpha: 0.90, drift: 12 },
+        { u: 0.585, v: 0.015, sizeRatio: 0.145, stroke: 3.4, alpha: 0.90, drift: 10 },
+        { u: 0.075, v: 0.555, sizeRatio: 0.125, stroke: 3.2, alpha: 0.90, drift: 11 },
+        { u: 0.335, v: 0.405, sizeRatio: 0.072, stroke: 1.6, alpha: 0.78, drift: 14 },
+        { u: 0.805, v: 0.275, sizeRatio: 0.070, stroke: 1.6, alpha: 0.80, drift: 13 },
+        { u: 0.955, v: 0.285, sizeRatio: 0.118, stroke: 3.2, alpha: 0.90, drift: 11 },
+        { u: 0.725, v: 0.635, sizeRatio: 0.068, stroke: 1.6, alpha: 0.78, drift: 14 },
+        { u: 0.675, v: 0.825, sizeRatio: 0.142, stroke: 3.4, alpha: 0.92, drift: 12 },
+        { u: 0.855, v: 0.915, sizeRatio: 0.066, stroke: 1.5, alpha: 0.68, drift: 10 }
+        ];
+
+        const roamingBubbles = [];
+
+        function updateBubbleAnchors() {
+        const baseUnit = Math.min(drawBox.w, drawBox.h * 1.45);
+        for (let i = 0; i < roamingBubbles.length; i++) {
+        const b = roamingBubbles[i];
+        const cfg = b.cfg;
+        b.anchorX = drawBox.x + drawBox.w * cfg.u;
+        b.anchorY = drawBox.y + drawBox.h * cfg.v;
+        b.size = Math.round(baseUnit * cfg.sizeRatio);
+        b.el.style.setProperty('--size', `${b.size}px`);
+        }
+        }
+
+        function populateBubbles() {
+        bubbleLayer.innerHTML = '';
+        roamingBubbles.length = 0;
+        const baseUnit = Math.min(drawBox.w, drawBox.h * 1.45);
+
+        BUBBLE_LAYOUT.forEach((cfg, idx) => {
+        const size = Math.round(baseUnit * cfg.sizeRatio);
+        const anchorX = drawBox.x + drawBox.w * cfg.u;
+        const anchorY = drawBox.y + drawBox.h * cfg.v;
+
+        const el = document.createElement('div');
+        el.className = 'flat-bubble';
+        el.style.setProperty('--size', `${size}px`);
+        el.style.setProperty('--stroke', `${cfg.stroke}px`);
+        el.style.setProperty('--alpha', `${cfg.alpha}`);
+        el.style.opacity = '0';
+
+        const bubbleObj = {
+        el,
+        cfg,
+        anchorX,
+        anchorY,
+        x: anchorX,
+        y: anchorY,
+        size,
+        stroke: cfg.stroke,
+        phaseX: idx * 1.3 + Math.random() * 2,
+        phaseY: idx * 1.9 + Math.random() * 2,
+        speedX: 0.008 + Math.random() * 0.005,
+        speedY: 0.007 + Math.random() * 0.005,
+        scale: 1,
+        popped: false
+        };
+
+        el.addEventListener('mouseenter', () => {
+        if (!bubbleObj.popped) bubbleObj.scale = 1.07;
+        });
+        el.addEventListener('mouseleave', () => {
+        if (!bubbleObj.popped) bubbleObj.scale = 1;
+        });
+
+        el.addEventListener('click', () => {
+        if (isCleared || bubbleObj.popped) return;
+        bubbleObj.popped = true;
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+
+        spawnFlatPopEffect(bubbleObj.x, bubbleObj.y, bubbleObj.size, bubbleObj.stroke);
+
+        poppedCount++;
+        popCountEl.textContent = poppedCount;
+
+        if (poppedCount >= REQUIRED_POPS) {
+        triggerWaterRecede();
+        return;
+        }
+
+        setTimeout(() => {
+        if (isCleared) return;
+        bubbleObj.scale = 1;
+        bubbleObj.popped = false;
+        el.style.pointerEvents = 'auto';
+        el.style.opacity = '1';
+        }, 2800);
+        });
+
+        bubbleLayer.appendChild(el);
+        requestAnimationFrame(() => {
+        if (!bubbleObj.popped && !isCleared) el.style.opacity = '1';
+        });
+
+        roamingBubbles.push(bubbleObj);
+        });
+        }
+
+        function updateRoamingBubbles() {
+        for (let i = 0; i < roamingBubbles.length; i++) {
+        const b = roamingBubbles[i];
+        if (b.popped) continue;
+
+        b.phaseX += b.speedX;
+        b.phaseY += b.speedY;
+
+        const offsetX = Math.sin(b.phaseX) * b.cfg.drift + Math.cos(b.phaseY * 0.7) * (b.cfg.drift * 0.4);
+        const offsetY = Math.cos(b.phaseY) * b.cfg.drift - waveState.scrollVel * 8.0;
+
+        b.x = b.anchorX + offsetX;
+        b.y = b.anchorY + offsetY;
+
+        b.el.style.transform = `translate3d(${b.x.toFixed(1)}px, ${b.y.toFixed(1)}px, 0) scale(${b.scale})`;
+        }
+
+        requestAnimationFrame(updateRoamingBubbles);
+        }
+
+        function spawnFlatPopEffect(x, y, size, stroke) {
+        const ring = document.createElement('div');
+        ring.className = 'flat-pop-ring';
+        ring.style.left = `${x}px`;
+        ring.style.top = `${y}px`;
+        ring.style.setProperty('--ring-size', `${size}px`);
+        ring.style.setProperty('--ring-stroke', `${stroke}px`);
+        document.body.appendChild(ring);
+        setTimeout(() => ring.remove(), 480);
+        }
+
+        /* ==================== 四、最前面阶段：低透明度水光焦散网格 + 鼠标虹彩水波涟漪 ==================== */
+        const cursorRipples = [];
+        let lastCausticSpawn = 0;
+        let causticTime = 0;
+
+        const causticTile = document.createElement('canvas');
+        causticTile.width = 360;
+        causticTile.height = 360;
+        (function buildCausticTile() {
+        const tCtx = causticTile.getContext('2d');
+        tCtx.clearRect(0, 0, 360, 360);
+        const nodes = [
+        { x: 60, y: 70, r: 95 },
+        { x: 210, y: 55, r: 105 },
+        { x: 320, y: 120, r: 85 },
+        { x: 110, y: 210, r: 115 },
+        { x: 265, y: 235, r: 100 },
+        { x: 45, y: 315, r: 90 },
+        { x: 185, y: 335, r: 95 }
+        ];
+        tCtx.globalCompositeOperation = 'screen';
+        nodes.forEach(n => {
+        for (let ox = -360; ox <= 360; ox += 360) {
+        for (let oy = -360; oy <= 360; oy += 360) {
+        const cx = n.x + ox;
+        const cy = n.y + oy;
+        const grad = tCtx.createRadialGradient(cx, cy, n.r * 0.42, cx, cy, n.r);
+        grad.addColorStop(0, 'rgba(180, 220, 255, 0)');
+        grad.addColorStop(0.68, 'rgba(195, 228, 255, 0.02)');
+        grad.addColorStop(0.88, 'rgba(235, 246, 255, 0.08)');
+        grad.addColorStop(0.96, 'rgba(220, 210, 255, 0.05)');
+        grad.addColorStop(1, 'rgba(180, 220, 255, 0)');
+        tCtx.fillStyle = grad;
+        tCtx.beginPath();
+        tCtx.arc(cx, cy, n.r, 0, Math.PI * 2);
+        tCtx.fill();
+        }
+        }
+        });
+        })();
+
+        function addCursorIridescentRipple(x, y, intensity = 1.0) {
+        if (isCleared) return;
+        cursorRipples.push({
+        x,
+        y,
+        radius: 8,
+        maxRadius: (125 + Math.random() * 45) * intensity,
+        alpha: 0.36 * Math.min(1.2, intensity)
+        });
+        if (cursorRipples.length > 36) {
+        cursorRipples.shift();
+        }
+        }
+
+        window.addEventListener('mousemove', (e) => {
+        if (isCleared) return;
+        const now = performance.now();
+        if (now - lastCausticSpawn > 38) {
+        lastCausticSpawn = now;
+        addCursorIridescentRipple(e.clientX, e.clientY, 0.95);
+        }
+        });
+
+        window.addEventListener('mousedown', (e) => {
+        if (isCleared) return;
+        addCursorIridescentRipple(e.clientX, e.clientY, 1.25);
+        });
+
+        window.addEventListener('touchmove', (e) => {
+        if (isCleared || e.touches.length === 0) return;
+        const now = performance.now();
+        if (now - lastCausticSpawn > 38) {
+        lastCausticSpawn = now;
+        const t = e.touches[0];
+        addCursorIridescentRipple(t.clientX, t.clientY, 1.0);
+        }
+        }, { passive: true });
+
+        window.addEventListener('touchstart', (e) => {
+        if (isCleared || e.touches.length === 0) return;
+        const t = e.touches[0];
+        addCursorIridescentRipple(t.clientX, t.clientY, 1.2);
+        }, { passive: true });
+
+        function renderCausticLayer() {
+        causticTime += 0.012;
+        cCtx.clearRect(0, 0, vw, vh);
+
+        cCtx.save();
+        cCtx.globalCompositeOperation = 'screen';
+
+        const shiftX1 = (causticTime * 24) % 360;
+        const shiftY1 = (Math.sin(causticTime * 0.8) * 26 + causticTime * 15) % 360;
+        cCtx.globalAlpha = 0.28;
+        for (let x = -360; x < vw + 360; x += 360) {
+        for (let y = -360; y < vh + 360; y += 360) {
+        cCtx.drawImage(causticTile, x + shiftX1, y + shiftY1);
+        }
+        }
+
+        const shiftX2 = (-causticTime * 18 + 140) % 360;
+        const shiftY2 = (Math.cos(causticTime * 0.7) * 22 - causticTime * 13) % 360;
+        cCtx.globalAlpha = 0.20;
+        for (let x = -360; x < vw + 360; x += 360) {
+        for (let y = -360; y < vh + 360; y += 360) {
+        cCtx.drawImage(causticTile, x + shiftX2, y + shiftY2, 420, 420);
+        }
+        }
+
+        cCtx.globalAlpha = 1.0;
+
+        for (let i = cursorRipples.length - 1; i >= 0; i--) {
+        const rp = cursorRipples[i];
+        rp.radius += (rp.maxRadius - rp.radius) * 0.055;
+        rp.alpha *= 0.955;
+
+        if (rp.alpha < 0.008) {
+        cursorRipples.splice(i, 1);
+        continue;
+        }
+
+        cCtx.beginPath();
+        cCtx.arc(rp.x - 1.5, rp.y - 1.0, rp.radius + 2.5, 0, Math.PI * 2);
+        cCtx.strokeStyle = `rgba(232, 198, 255, ${(rp.alpha * 0.36).toFixed(3)})`;
+        cCtx.lineWidth = 1.8;
+        cCtx.stroke();
+
+        cCtx.beginPath();
+        cCtx.arc(rp.x, rp.y, rp.radius, 0, Math.PI * 2);
+        cCtx.strokeStyle = `rgba(245, 251, 255, ${(rp.alpha * 0.55).toFixed(3)})`;
+        cCtx.lineWidth = 1.3;
+        cCtx.stroke();
+
+        if (rp.radius > 14) {
+        cCtx.beginPath();
+        cCtx.arc(rp.x + 1.5, rp.y + 1.0, rp.radius * 0.72, 0, Math.PI * 2);
+        cCtx.strokeStyle = `rgba(175, 232, 255, ${(rp.alpha * 0.38).toFixed(3)})`;
+        cCtx.lineWidth = 1.2;
+        cCtx.stroke();
+        }
+
+        const glow = cCtx.createRadialGradient(rp.x, rp.y, 0, rp.x, rp.y, rp.radius * 0.85);
+        glow.addColorStop(0, `rgba(224, 242, 254, ${(rp.alpha * 0.10).toFixed(3)})`);
+        glow.addColorStop(0.6, `rgba(233, 213, 255, ${(rp.alpha * 0.04).toFixed(3)})`);
+        glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        cCtx.fillStyle = glow;
+        cCtx.beginPath();
+        cCtx.arc(rp.x, rp.y, rp.radius * 0.85, 0, Math.PI * 2);
+        cCtx.fill();
+        }
+
+        cCtx.restore();
+        requestAnimationFrame(renderCausticLayer);
+        }
+
+        /* ==================== 五、GSAP 逐字模糊浮现（支持双行结构，精准落于红框内） ==================== */
+        const QUOTE_LINES = [
+        'Every moment is a new beginning,',
+        'and a sudden goodbye.'
+        ];
+        let quoteTween = null;
+
+        function buildSplitChars() {
+        endingQuote.innerHTML = '';
+        QUOTE_LINES.forEach((lineText) => {
+        const lineSpan = document.createElement('span');
+        lineSpan.className = 'quote-line';
+
+        const words = lineText.split(' ');
+        words.forEach((word, wIdx) => {
+        const wordSpan = document.createElement('span');
+        wordSpan.className = 'quote-word';
+
+        for (const ch of word) {
+        const charSpan = document.createElement('span');
+        charSpan.className = 'quote-char';
+        charSpan.textContent = ch;
+        wordSpan.appendChild(charSpan);
+        }
+
+        lineSpan.appendChild(wordSpan);
+
+        if (wIdx < words.length - 1) {
+        lineSpan.appendChild(document.createTextNode(' '));
+        }
+        });
+
+        endingQuote.appendChild(lineSpan);
+        });
+        return endingQuote.querySelectorAll('.quote-char');
+        }
+
+        function resetQuoteChars() {
+        if (quoteTween) {
+        quoteTween.kill();
+        quoteTween = null;
+        }
+        const chars = buildSplitChars();
+        if (window.gsap) {
+        gsap.set(chars, {
+        opacity: 0,
+        filter: 'blur(10px)',
+        y: '.25em',
+        scale: 1.15
+        });
+        }
+        }
+
+        function playBlurInLetters() {
+        const chars = buildSplitChars();
+
+        if (!window.gsap) {
+        chars.forEach(c => { c.style.opacity = '1'; });
+        return;
+        }
+
+        quoteTween = gsap.fromTo(
+        chars,
+        {
+        opacity: 0,
+        filter: 'blur(10px)',
+        y: '.25em',
+        scale: 1.15
+        },
+        {
+        opacity: 1,
+        filter: 'blur(0px)',
+        y: 0,
+        scale: 1,
+        duration: 0.75,
+        ease: 'power2.out',
+        stagger: 0.07
+        }
+        );
+        }
+
+        /* ==================== 六、水波缓慢平复 & 通关文字登场 ==================== */
+        function clearEndingTimers() {
+        endingTimers.forEach(id => clearTimeout(id));
+        endingTimers = [];
+        }
+
+        function triggerWaterRecede() {
+        isCleared = true;
+        clearEndingTimers();
+        hudTip.style.opacity = '0';
+
+        try {
+        sessionStorage.setItem('fish_done', 'true');
+        } catch (e) {}
+
+        bubbleLayer.classList.add('receded');
+        causticCanvas.classList.add('receded');
+
+        if (window.gsap) {
+        gsap.to(waveState, {
+        amplitude: 0,
+        duration: 2.2,
+        ease: 'power2.out'
+        });
+        } else {
+        waveState.amplitude = 0;
+        }
+
+        endingTimers.push(setTimeout(() => {
+        playBlurInLetters();
+        }, 3000));
+
+        endingTimers.push(setTimeout(() => {
+        btnContinue.classList.add('fade-in');
+        }, 6600));
+        }
+
+        /* ==================== 七、初始化与返回主界面 ==================== */
+        function initLevel() {
+        clearEndingTimers();
+        resetQuoteChars();
+
+        poppedCount = 0;
+        isCleared = false;
+        popCountEl.textContent = '0';
+        cursorRipples.length = 0;
+
+        waveState.amplitude = 1.0;
+        waveState.scrollPhase = 0.0;
+        waveState.scrollVel = 0.0;
+
+        hudTip.style.opacity = '1';
+        bubbleLayer.classList.remove('receded');
+        causticCanvas.classList.remove('receded');
+        btnContinue.classList.remove('fade-in');
+
+        populateBubbles();
+        }
+
+        function returnToHub() {
+        try {
+        sessionStorage.setItem('fish_done', 'true');
+        } catch (e) {}
+        window.location.href = 'HTMLPage1.html?from=fish';
+        }
+
+        bgImg.onload = () => {
+        bgLoaded = true;
+        rebuildBuffers();
+        populateBubbles();
+        };
+        bgImg.src = BG_IMAGE_SRC;
+
+        window.addEventListener('resize', () => {
+        rebuildBuffers();
+        });
+
+        rebuildBuffers();
+        initLevel();
+        requestAnimationFrame(renderLiquidFrame);
+        requestAnimationFrame(updateRoamingBubbles);
+        requestAnimationFrame(renderCausticLayer);
+    </script>
+</body>
+</html>

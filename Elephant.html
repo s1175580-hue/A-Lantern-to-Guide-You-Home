@@ -1,0 +1,455 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>大象门 · 归途与拥抱</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <style>
+        @font-face {
+            font-family: 'CHI_Bottoms';
+            src: url('CHI_Bottoms.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b1320;
+            font-family: 'CHI_Bottoms', "Georgia", serif;
+            cursor: none;
+        }
+
+        /* ==================== 速度拉伸游标（与乌鸦门同款果冻效果） ==================== */
+        #custom-cursor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 26px;
+            height: 26px;
+            background-color: #fde047; /* 暖黄色实心球 */
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 99999;
+            box-shadow: 0 0 12px rgba(253, 224, 71, 0.9), 0 0 24px rgba(253, 224, 71, 0.5);
+            will-change: transform;
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            html, body {
+                cursor: auto !important;
+            }
+
+            #custom-cursor {
+                display: none !important;
+            }
+        }
+
+        /* ==================== 一、视觉层叠 ==================== */
+
+        /* 1. 最底层 (z-index: 1)：最终的‘拥抱图’ */
+        #embrace-scene {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('elephant_bg_2.png');
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            z-index: 1;
+        }
+
+        /* 2. 初始背景层 (z-index: 2)：‘发光大象’背景图 */
+        #elephant-scene {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('elephant_bg_1.png');
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            opacity: 1;
+            z-index: 2;
+            will-change: filter, transform, opacity;
+        }
+
+        /* ==================== 二、长按蓄力屏幕边缘柔光 (z-index: 4) ==================== */
+        #screen-edge-warmth {
+            position: fixed;
+            inset: 0;
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0;
+            box-shadow: inset 0 0 90px 28px rgba(254, 240, 138, 0.55), inset 0 0 180px 60px rgba(255, 251, 235, 0.35);
+            will-change: opacity;
+        }
+
+        /* 3. 交互提示 (z-index: 5)：呼吸闪烁小字 “Hold to embrace” */
+        #hold-prompt-wrap {
+            position: fixed;
+            left: 50%;
+            bottom: 5.2%;
+            transform: translateX(-50%);
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+        }
+
+        #hold-prompt {
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-size: clamp(0.95rem, 1.8vw, 1.25rem);
+            letter-spacing: 0.16em;
+            color: #fffdf2;
+            text-shadow: 0 2px 12px rgba(8, 15, 28, 0.9), 0 0 18px rgba(254, 249, 195, 0.65);
+            animation: breatheHint 3.2s ease-in-out infinite;
+        }
+
+        @keyframes breatheHint {
+            0%, 100% {
+                opacity: 0.38;
+                transform: scale(0.98);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.03);
+            }
+        }
+
+        #hold-progress-track {
+            width: 140px;
+            height: 2px;
+            background: rgba(255, 253, 240, 0.18);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        #hold-progress-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(254, 240, 138, 0.6), #ffffff);
+            box-shadow: 0 0 10px rgba(255, 253, 224, 0.9);
+            transform-origin: center center;
+            transform: scaleX(0);
+        }
+
+        /* ==================== 三、通关转场白光爆发层 (z-index: 20) ==================== */
+        #flash-burst {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            pointer-events: none;
+            opacity: 0;
+            background: radial-gradient( circle at 50% 50%, #ffffff 0%, #fffdf0 45%, #fef3c7 100% );
+        }
+
+        /* ==================== 四、结局排版：严格控制在右侧云层红框区域 (z-index: 10) ==================== */
+        #ending-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #ending-copy-box {
+            position: absolute;
+            right: 4.5vw;
+            top: 18.5vh;
+            height: 65vh;
+            width: 24vw;
+            min-width: 240px;
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+
+        .ending-line {
+            width: 100%;
+            opacity: 0;
+            transform: translateY(22px);
+            will-change: transform, opacity;
+        }
+
+        .ending-line-sub {
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-style: normal;
+            font-weight: normal;
+            font-size: clamp(1.38rem, 2.25vw, 2.15rem);
+            letter-spacing: 0.03em;
+            line-height: 1.52;
+            color: rgba(248, 250, 252, 0.95);
+            text-shadow: 0 2px 14px rgba(7, 15, 30, 0.85);
+        }
+
+        .ending-line-hero {
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-style: normal;
+            font-weight: normal;
+            font-size: clamp(1.52rem, 2.48vw, 2.42rem);
+            letter-spacing: 0.13em;
+            margin-right: -0.13em;
+            line-height: 1.56;
+            color: #fffef5;
+            text-shadow: 0 0 14px rgba(255, 251, 214, 0.88), 0 0 32px rgba(253, 224, 71, 0.62), 0 2px 16px rgba(7, 15, 30, 0.95);
+        }
+
+        .ending-line-sign {
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-style: normal;
+            font-weight: normal;
+            font-size: clamp(1.32rem, 2.1vw, 1.98rem);
+            letter-spacing: 0.04em;
+            line-height: 1.52;
+            color: rgba(248, 250, 252, 0.95);
+            text-shadow: 0 2px 14px rgba(7, 15, 30, 0.85);
+        }
+
+        .no-break-word {
+            display: inline-block;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 自定义速度拉伸果冻光标 -->
+    <div id="custom-cursor"></div>
+
+    <!-- 1. 最底层 (z-index: 1)：最终的‘拥抱图’ -->
+    <div id="embrace-scene"></div>
+
+    <!-- 2. 初始背景层 (z-index: 2)：‘发光大象’背景图 -->
+    <div id="elephant-scene"></div>
+
+    <!-- 3. 长按蓄力屏幕边缘暖柔光 (z-index: 4) -->
+    <div id="screen-edge-warmth"></div>
+
+    <!-- 4. 交互提示 (z-index: 5) -->
+    <div id="hold-prompt-wrap">
+        <div id="hold-prompt">Hold to embrace</div>
+        <div id="hold-progress-track">
+            <div id="hold-progress-fill"></div>
+        </div>
+    </div>
+
+    <!-- 5. 通关暖白/金光全屏爆发遮罩 (z-index: 20) -->
+    <div id="flash-burst"></div>
+
+    <!-- 6. 结局右侧红框区域内四组双行右对齐文案 (z-index: 10) -->
+    <div id="ending-overlay">
+        <div id="ending-copy-box">
+            <p class="ending-line ending-line-sub" id="line-1">
+                <span class="no-break-word">A journey through</span><br />
+                <span class="no-break-word">the endless forest,</span>
+            </p>
+            <p class="ending-line ending-line-sub" id="line-2">
+                <span class="no-break-word">You are the lantern</span><br />
+                <span class="no-break-word">that guides it home.</span>
+            </p>
+            <p class="ending-line ending-line-hero" id="line-3">
+                <span class="no-break-word">HOME IS WHERE</span><br />
+                <span class="no-break-word">THE LIGHT IS.</span>
+            </p>
+            <p class="ending-line ending-line-sign" id="line-4">
+                <span class="no-break-word">——A Lantern</span><br />
+                <span class="no-break-word">to Guide You Home</span>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const HOLD_DURATION_MS = 3000;
+
+        const customCursor = document.getElementById('custom-cursor');
+        const elephantScene = document.getElementById('elephant-scene');
+        const screenEdgeWarmth = document.getElementById('screen-edge-warmth');
+        const holdPromptWrap = document.getElementById('hold-prompt-wrap');
+        const holdProgressFill = document.getElementById('hold-progress-fill');
+        const flashBurst = document.getElementById('flash-burst');
+        const endingLines = [
+        document.getElementById('line-1'),
+        document.getElementById('line-2'),
+        document.getElementById('line-3'),
+        document.getElementById('line-4')
+        ];
+
+        let isHolding = false;
+        let isCompleted = false;
+        let holdProgress = 0;
+        let lastFrameTime = null;
+        let rafId = null;
+
+        /* ==================== 速度拉伸游标物理引擎（与乌鸦门完全一致） ==================== */
+        let targetX = window.innerWidth / 2;
+        let targetY = window.innerHeight / 2;
+        let currentX = targetX;
+        let currentY = targetY;
+        let currentSpeed = 0;
+        let currentAngle = 0;
+
+        window.addEventListener('mousemove', (e) => {
+        if (isCompleted) return;
+        targetX = e.clientX;
+        targetY = e.clientY;
+        }, { passive: true });
+
+        function lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+        }
+
+        function updateCursorStretch() {
+        if (isCompleted) {
+        requestAnimationFrame(updateCursorStretch);
+        return;
+        }
+
+        const prevX = currentX;
+        const prevY = currentY;
+
+        currentX = lerp(currentX, targetX, 0.2);
+        currentY = lerp(currentY, targetY, 0.2);
+
+        const dx = currentX - prevX;
+        const dy = currentY - prevY;
+        const instantSpeed = Math.sqrt(dx * dx + dy * dy);
+
+        currentSpeed = lerp(currentSpeed, instantSpeed, 0.15);
+
+        if (instantSpeed > 0.1) {
+        const targetAngle = Math.atan2(dy, dx);
+        let deltaAngle = targetAngle - currentAngle;
+        while (deltaAngle < -Math.PI) deltaAngle += Math.PI * 2;
+        while (deltaAngle > Math.PI) deltaAngle -= Math.PI * 2;
+        currentAngle += deltaAngle * 0.2;
+        }
+
+        const maxSpeed = 30;
+        const speedFactor = Math.min(currentSpeed / maxSpeed, 0.75);
+        const scaleX = 1 + speedFactor * 0.8;
+        const scaleY = 1 - speedFactor * 0.45;
+
+        customCursor.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) translate(-50%, -50%) rotate(${currentAngle}rad) scale(${scaleX}, ${scaleY})`;
+
+        requestAnimationFrame(updateCursorStretch);
+        }
+
+        requestAnimationFrame(updateCursorStretch);
+
+        /* ==================== 长按拥抱蓄力与转场动画 ==================== */
+        function applyHoldVisuals(p) {
+        const ease = p * p * (3 - 2 * p);
+
+        const brightness = 1 + ease * 0.65;
+        const contrast = 1 + ease * 0.08;
+        const sceneScale = 1 + ease * 0.025;
+        elephantScene.style.filter = `brightness(${brightness.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
+        elephantScene.style.transform = `scale(${sceneScale.toFixed(4)})`;
+
+        screenEdgeWarmth.style.opacity = (ease * 0.95).toFixed(3);
+        holdProgressFill.style.transform = `scaleX(${p.toFixed(4)})`;
+        }
+
+        function tickHoldLoop(now) {
+        if (!lastFrameTime) lastFrameTime = now;
+        const dt = now - lastFrameTime;
+        lastFrameTime = now;
+
+        if (!isCompleted) {
+        if (isHolding) {
+        holdProgress = Math.min(1, holdProgress + dt / HOLD_DURATION_MS);
+        applyHoldVisuals(holdProgress);
+
+        if (holdProgress >= 1) {
+        triggerEmbraceTransition();
+        return;
+        }
+        } else if (holdProgress > 0) {
+        holdProgress = Math.max(0, holdProgress - dt / 650);
+        applyHoldVisuals(holdProgress);
+        }
+        }
+
+        rafId = requestAnimationFrame(tickHoldLoop);
+        }
+
+        function startHolding() {
+        if (isCompleted) return;
+        isHolding = true;
+        }
+
+        function stopHolding() {
+        if (isCompleted) return;
+        isHolding = false;
+        }
+
+        window.addEventListener('mousedown', startHolding);
+        window.addEventListener('mouseup', stopHolding);
+        window.addEventListener('mouseleave', stopHolding);
+
+        window.addEventListener('touchstart', startHolding, { passive: true });
+        window.addEventListener('touchend', stopHolding);
+        window.addEventListener('touchcancel', stopHolding);
+
+        function triggerEmbraceTransition() {
+        isCompleted = true;
+        isHolding = false;
+
+        try {
+        sessionStorage.setItem('elephant_done', 'true');
+        } catch (e) {}
+
+        // 恢复默认指针并隐藏自定义光标（与乌鸦门通关行为一致）
+        document.body.style.cursor = 'default';
+        customCursor.style.display = 'none';
+
+        holdPromptWrap.style.opacity = '0';
+
+        const tl = gsap.timeline();
+
+        tl.to(flashBurst, {
+        opacity: 1,
+        duration: 0.65,
+        ease: 'power2.in'
+        })
+        .add(() => {
+        elephantScene.style.opacity = '0';
+        elephantScene.style.pointerEvents = 'none';
+        screenEdgeWarmth.style.opacity = '0';
+        })
+        .to(flashBurst, {
+        opacity: 0,
+        duration: 1.85,
+        ease: 'power2.out'
+        }, '+=0.18')
+        .to(endingLines, {
+        opacity: 1,
+        y: 0,
+        duration: 1.15,
+        ease: 'power2.out',
+        stagger: 0.55
+        }, '-=0.45');
+        }
+
+        rafId = requestAnimationFrame(tickHoldLoop);
+    </script>
+</body>
+</html>

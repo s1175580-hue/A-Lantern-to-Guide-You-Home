@@ -1,0 +1,758 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>三扇门场景交互</title>
+    <!-- 引入 GSAP 动画库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <style>
+        /* 引入自定义字体 */
+        @font-face {
+            font-family: 'CHI_Bottoms';
+            src: url('CHI_Bottoms.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body, #lantern-hotspot, .door-hotspot, #btn-elephant-gate {
+            cursor: none !important;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: "Georgia", serif;
+        }
+
+        /* ==================== 速度拉伸游标（与乌鸦门同款果冻效果） ==================== */
+        #custom-cursor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 26px;
+            height: 26px;
+            background-color: #fde047; /* 暖黄色实心球 */
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 99999;
+            box-shadow: 0 0 12px rgba(253, 224, 71, 0.9), 0 0 24px rgba(253, 224, 71, 0.5);
+            will-change: transform;
+        }
+
+        @media (hover: none) and (pointer: coarse) {
+            html, body, #lantern-hotspot, .door-hotspot, #btn-elephant-gate {
+                cursor: auto !important;
+            }
+
+            #custom-cursor {
+                display: none !important;
+            }
+        }
+
+        .scene {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ==================== 核心：等比锁定背景图与热区的舞台容器 ==================== */
+        .stage-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* ==================== 阶段一：提灯场景 ==================== */
+        #scene-1 {
+            z-index: 10;
+        }
+
+        #stage-1 {
+            background-image: url('bg_start.png');
+        }
+
+        /* 提灯发光图层：全舞台等比铺满，随 stage-1 同步缩放不偏移 */
+        #lantern-glow {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+            #lantern-glow.is-charging {
+                opacity: 1;
+            }
+
+        /* 提灯点击热区（按舞台百分比锁定位置） */
+        .lantern-wrapper {
+            position: absolute;
+            top: 75%;
+            left: 54%;
+            width: 9%;
+            height: 18%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+        }
+
+        #lantern-hotspot {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 提示文字：相对整个舞台独立定位，调整 top 即可明显改变上下高度 */
+        #hint-text {
+            position: absolute;
+            top: 86%;
+            left: 54%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-size: clamp(1.1rem, 2vw, 1.8rem);
+            font-family: 'CHI_Bottoms', serif;
+            letter-spacing: 0.10em;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 6;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+            animation: textBreathe 3.2s ease-in-out infinite;
+            transition: opacity 0.3s ease;
+        }
+
+        @keyframes textBreathe {
+            0%, 100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* ==================== 全屏缓慢白光转场遮罩 ==================== */
+        #white-flash {
+            position: fixed;
+            inset: 0;
+            background-color: #fff;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+            #white-flash.active {
+                pointer-events: auto;
+            }
+
+        /* ==================== 阶段二：三扇门场景 ==================== */
+        #scene-2 {
+            z-index: 20;
+            display: none;
+        }
+
+        #stage-2 {
+            background-image: url('bg_doors.png');
+        }
+
+        /* 三扇门界面入场引语（灰色字体，中轴线对齐乌鸦门中轴线 55.5%） */
+        #doors-quote {
+            position: absolute;
+            top: 6%;
+            left: 55.5%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: #b8bec8;
+            font-family: 'CHI_Bottoms', serif;
+            font-size: clamp(1.1rem, 2.3vw, 1.75rem);
+            letter-spacing: 0.10em;
+            line-height: 1.6;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 6;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.92), 0 0 18px rgba(184, 190, 200, 0.25);
+        }
+
+            /* 逐字浮现完成后开启缓慢若隐若现的呼吸动画 */
+            #doors-quote.is-breathing {
+                animation: quoteSlowBreathe 2.8s ease-in-out infinite;
+            }
+
+        @keyframes quoteSlowBreathe {
+            0%, 100% {
+                opacity: 0.95;
+            }
+
+            50% {
+                opacity: 0.42;
+            }
+        }
+
+        .quote-word {
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .quote-char {
+            display: inline-block;
+            opacity: 0;
+            will-change: transform, opacity, filter;
+        }
+
+        /* 原尺寸透明底亮门图：直接 100% 铺满整个等比舞台，无需任何缩放和位移 */
+        .door-light {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 2;
+            transition: opacity 0.5s ease;
+        }
+
+            /* 鼠标悬停 或 已通关时点亮对应门层 */
+            .door-light.is-active {
+                opacity: 1;
+            }
+
+        /* 原尺寸透明底分割线 PNG：与文字完全同步缓慢显现（1.2s 丝滑柔焦浮现） */
+        .door-divider {
+            position: absolute;
+            top: -7%;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            opacity: 0;
+            filter: blur(4px);
+            transform: scale(0.985);
+            pointer-events: none;
+            z-index: 3;
+            will-change: opacity, transform, filter;
+            transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1), transform 1.2s cubic-bezier(0.22, 1, 0.36, 1), filter 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+            .door-divider.is-hovered {
+                opacity: 1;
+                filter: blur(0px);
+                transform: scale(1);
+            }
+
+        /* 分割线上方的自定义字体名称：与分割线完全同步缓慢浮现（1.2s 丝滑柔焦上浮） */
+        .door-label {
+            position: absolute;
+            transform: translate(-50%, 12px);
+            font-family: 'CHI_Bottoms', serif;
+            font-size: clamp(0.8rem, 2.2vw, 1.5rem);
+            letter-spacing: 0.14em;
+            color: #ffffff;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 4;
+            opacity: 0;
+            filter: blur(5px);
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 245, 200, 0.55);
+            will-change: opacity, transform, filter;
+            transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1), transform 1.2s cubic-bezier(0.22, 1, 0.36, 1), filter 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+            .door-label.is-hovered {
+                opacity: 1;
+                filter: blur(0px);
+                transform: translate(-50%, 0);
+            }
+
+        /* 三扇门上方文字位置 */
+        #label-rabbit {
+            left: 17.5%;
+            top: 32%;
+        }
+
+        #label-crow {
+            left: 55.5%;
+            top: 15%;
+        }
+
+        #label-fish {
+            left: 91%;
+            top: 19%;
+        }
+
+        /* 透明交互点击热区（只负责接收鼠标悬停和点击） */
+        .door-hotspot {
+            position: absolute;
+            z-index: 10;
+        }
+
+        #hotspot-rabbit {
+            left: 10%;
+            top: 40%;
+            width: 15%;
+            height: 34%;
+        }
+
+        #hotspot-crow {
+            left: 45%;
+            top: 29%;
+            width: 21%;
+            height: 54%;
+        }
+
+        #hotspot-fish {
+            left: 86%;
+            top: 28%;
+            width: 10%;
+            height: 30%;
+        }
+
+        /* ==================== 三扇门全亮后底部缓缓浮现的 Keep Going 按钮（红框石板路前方位置） ==================== */
+        #btn-elephant-gate {
+            position: absolute;
+            bottom: 4.5%;
+            left: 55.5%;
+            transform: translate(-50%, 14px);
+            padding: 12px 42px;
+            font-family: 'CHI_Bottoms', 'Georgia', serif;
+            font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+            letter-spacing: 0.15em;
+            color: #fde047;
+            background: rgba(15, 23, 42, 0.48);
+            border: 1.5px solid #fde047;
+            border-radius: 999px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 0 10px rgba(253, 224, 71, 0.4), inset 0 0 10px rgba(253, 224, 71, 0.2);
+            z-index: 15;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.5s ease, transform 1.5s ease, background 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+        }
+
+            #btn-elephant-gate.fade-in {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translate(-50%, 0);
+                animation: neonBreathe 2.4s ease-in-out 1.5s infinite;
+            }
+
+        @keyframes neonBreathe {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(253, 224, 71, 0.3), inset 0 0 5px rgba(253, 224, 71, 0.1);
+                border-color: rgba(253, 224, 71, 0.6);
+            }
+
+            50% {
+                box-shadow: 0 0 25px rgba(253, 224, 71, 0.85), 0 0 42px rgba(253, 224, 71, 0.4), inset 0 0 15px rgba(253, 224, 71, 0.4);
+                border-color: rgba(253, 224, 71, 1);
+            }
+        }
+
+        #btn-elephant-gate.fade-in:hover {
+            opacity: 1 !important;
+            background: #fde047;
+            color: #0f172a;
+            animation: none;
+            box-shadow: 0 0 20px rgba(253, 224, 71, 1), 0 0 40px rgba(253, 224, 71, 0.8), 0 0 70px rgba(253, 224, 71, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.8);
+            transform: translate(-50%, 0) scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 自定义速度拉伸果冻光标（与乌鸦门完全一致） -->
+    <div id="custom-cursor"></div>
+
+    <!-- 阶段一：提灯场景 -->
+    <div id="scene-1" class="scene">
+        <div id="stage-1" class="stage-container">
+            <!-- 全舞台等比自适应的发光提灯层 -->
+            <img id="lantern-glow" src="lantern_glow.png" alt="发光提灯">
+
+            <!-- 提灯热区 -->
+            <div class="lantern-wrapper">
+                <div id="lantern-hotspot"></div>
+            </div>
+
+            <!-- 独立定位的提示文字 -->
+            <p id="hint-text">Pick up the lantern</p>
+        </div>
+    </div>
+
+    <!-- 阶段二：三扇门场景 -->
+    <div id="scene-2" class="scene">
+        <div id="stage-2" class="stage-container">
+            <!-- 三扇门界面入场文字 -->
+            <p id="doors-quote">Not all who wander are lost.</p>
+
+            <!-- 原画布尺寸透明底亮门 PNG 图层 -->
+            <img id="light-rabbit" class="door-light" src="rabbit_light.png" alt="兔子亮门">
+            <img id="light-crow" class="door-light" src="crow_light.png" alt="乌鸦亮门">
+            <img id="light-fish" class="door-light" src="goldfish_light.png" alt="金鱼亮门">
+
+            <!-- 原画布尺寸透明底分割线 PNG 图层（悬停时与文字同步缓慢显现） -->
+            <img id="divider-rabbit" class="door-divider" src="rabbit-line.png" alt="兔子门分割线">
+            <img id="divider-crow" class="door-divider" src="crow-line.png" alt="乌鸦门分割线">
+            <img id="divider-fish" class="door-divider" src="goldfish-line.png" alt="金鱼门分割线">
+
+            <!-- 分割线上方对应的标题文字 -->
+            <div id="label-rabbit" class="door-label">Illusion</div>
+            <div id="label-crow" class="door-label">Lost</div>
+            <div id="label-fish" class="door-label">Drifting</div>
+
+            <!-- 三扇门点击与悬停热区 -->
+            <div id="hotspot-rabbit" class="door-hotspot" data-animal="rabbit"></div>
+            <div id="hotspot-crow" class="door-hotspot" data-animal="crow"></div>
+            <div id="hotspot-fish" class="door-hotspot" data-animal="fish"></div>
+
+            <!-- 三扇门全亮后下方红框位置缓缓浮现的 Keep Going 按钮，点击前往大象门 -->
+            <button id="btn-elephant-gate" onclick="goToElephantGate()">Keep Going</button>
+        </div>
+    </div>
+
+    <div id="white-flash"></div>
+
+    <script>
+        /* ==================== 速度拉伸游标物理引擎（与乌鸦门完全一致） ==================== */
+        const customCursor = document.getElementById('custom-cursor');
+        let targetX = window.innerWidth / 2;
+        let targetY = window.innerHeight / 2;
+        let currentX = targetX;
+        let currentY = targetY;
+        let currentSpeed = 0;
+        let currentAngle = 0;
+
+        window.addEventListener('mousemove', (e) => {
+        targetX = e.clientX;
+        targetY = e.clientY;
+        }, { passive: true });
+
+        function lerp(start, end, amt) {
+        return (1 - amt) * start + amt * end;
+        }
+
+        function updateCursorStretch() {
+        const prevX = currentX;
+        const prevY = currentY;
+
+        currentX = lerp(currentX, targetX, 0.2);
+        currentY = lerp(currentY, targetY, 0.2);
+
+        const dx = currentX - prevX;
+        const dy = currentY - prevY;
+        const instantSpeed = Math.sqrt(dx * dx + dy * dy);
+
+        currentSpeed = lerp(currentSpeed, instantSpeed, 0.15);
+
+        if (instantSpeed > 0.1) {
+        const targetAngle = Math.atan2(dy, dx);
+        let deltaAngle = targetAngle - currentAngle;
+        while (deltaAngle < -Math.PI) deltaAngle += Math.PI * 2;
+        while (deltaAngle > Math.PI) deltaAngle -= Math.PI * 2;
+        currentAngle += deltaAngle * 0.2;
+        }
+
+        const maxSpeed = 30;
+        const speedFactor = Math.min(currentSpeed / maxSpeed, 0.75);
+        const scaleX = 1 + speedFactor * 0.8;
+        const scaleY = 1 - speedFactor * 0.45;
+
+        customCursor.style.transform = `translate3d(${currentX}px, ${currentY}px, 0) translate(-50%, -50%) rotate(${currentAngle}rad) scale(${scaleX}, ${scaleY})`;
+
+        requestAnimationFrame(updateCursorStretch);
+        }
+
+        requestAnimationFrame(updateCursorStretch);
+
+        /* ==================== 舞台等比自适应引擎 ==================== */
+        const stageConfigs = [
+        { el: document.getElementById('stage-1'), src: 'bg_start.png', ratio: 16 / 9 },
+        { el: document.getElementById('stage-2'), src: 'bg_doors.png', ratio: 16 / 9 }
+        ];
+
+        function resizeStages() {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const viewRatio = vw / vh;
+
+        stageConfigs.forEach(cfg => {
+        if (!cfg.el) return;
+        let stageW, stageH;
+        if (viewRatio > cfg.ratio) {
+        stageW = vw;
+        stageH = vw / cfg.ratio;
+        } else {
+        stageH = vh;
+        stageW = vh * cfg.ratio;
+        }
+        cfg.el.style.width = `${stageW}px`;
+        cfg.el.style.height = `${stageH}px`;
+        });
+        }
+
+        // 自动读取背景图的真实自然宽高比并锁定舞台比例
+        stageConfigs.forEach(cfg => {
+        const img = new Image();
+        img.onload = () => {
+        if (img.naturalWidth && img.naturalHeight) {
+        cfg.ratio = img.naturalWidth / img.naturalHeight;
+        resizeStages();
+        }
+        };
+        img.src = cfg.src;
+        });
+
+        window.addEventListener('resize', resizeStages);
+        resizeStages();
+
+        /* ==================== 三扇门界面文字：逐字模糊浮现 + 慢速呼吸 ==================== */
+        const DOORS_QUOTE_TEXT = 'Not all who wander are lost.';
+        const doorsQuoteEl = document.getElementById('doors-quote');
+        let doorsQuoteTween = null;
+
+        function buildDoorsQuoteChars() {
+        doorsQuoteEl.classList.remove('is-breathing');
+        doorsQuoteEl.innerHTML = '';
+        const words = DOORS_QUOTE_TEXT.split(' ');
+        words.forEach((word, wIdx) => {
+        const wordSpan = document.createElement('span');
+        wordSpan.className = 'quote-word';
+
+        for (const ch of word) {
+        const charSpan = document.createElement('span');
+        charSpan.className = 'quote-char';
+        charSpan.textContent = ch;
+        wordSpan.appendChild(charSpan);
+        }
+
+        doorsQuoteEl.appendChild(wordSpan);
+
+        if (wIdx < words.length - 1) {
+        doorsQuoteEl.appendChild(document.createTextNode(' '));
+        }
+        });
+        return doorsQuoteEl.querySelectorAll('.quote-char');
+        }
+
+        function playDoorsQuoteAnimation(delay = 0.5) {
+        if (doorsQuoteTween) {
+        doorsQuoteTween.kill();
+        doorsQuoteTween = null;
+        }
+
+        const chars = buildDoorsQuoteChars();
+
+        if (!window.gsap) {
+        chars.forEach(c => { c.style.opacity = '1'; });
+        doorsQuoteEl.classList.add('is-breathing');
+        return;
+        }
+
+        doorsQuoteTween = gsap.fromTo(
+        chars,
+        {
+        opacity: 0,
+        filter: 'blur(10px)',
+        y: '.25em',
+        scale: 1.15
+        },
+        {
+        opacity: 1,
+        filter: 'blur(0px)',
+        y: 0,
+        scale: 1,
+        duration: 0.75,
+        delay: delay,
+        ease: 'power2.out',
+        stagger: 0.07,
+        onComplete: () => {
+        doorsQuoteEl.classList.add('is-breathing');
+        }
+        }
+        );
+        }
+
+        buildDoorsQuoteChars();
+
+        /* ==================== 阶段一逻辑 ==================== */
+        const lantern = document.getElementById('lantern-hotspot');
+        const lanternGlow = document.getElementById('lantern-glow');
+        const whiteFlash = document.getElementById('white-flash');
+        const scene1 = document.getElementById('scene-1');
+        const scene2 = document.getElementById('scene-2');
+        let holdTimer = null;
+        let isTransitioning = false;
+
+        function startHold(e) {
+        if (isTransitioning) return;
+        if (e.cancelable) e.preventDefault();
+        lanternGlow.classList.add('is-charging');
+        holdTimer = setTimeout(triggerSceneTransition, 1500);
+        }
+
+        function cancelHold() {
+        if (isTransitioning) return;
+        clearTimeout(holdTimer);
+        lanternGlow.classList.remove('is-charging');
+        }
+
+        function triggerSceneTransition() {
+        isTransitioning = true;
+        whiteFlash.classList.add('active');
+        whiteFlash.style.opacity = '1';
+        setTimeout(() => {
+        scene1.style.display = 'none';
+        scene2.style.display = 'block';
+        resizeStages();
+        whiteFlash.style.opacity = '0';
+        playDoorsQuoteAnimation(1.5);
+        checkAllDoorsUnlocked(1600);
+        setTimeout(() => {
+        whiteFlash.classList.remove('active');
+        isTransitioning = false;
+        }, 1150);
+        }, 1150);
+        }
+
+        lantern.addEventListener('mousedown', startHold);
+        window.addEventListener('mouseup', cancelHold);
+        lantern.addEventListener('touchstart', startHold, { passive: false });
+        window.addEventListener('touchend', cancelHold);
+
+        /* ==================== 统一缓慢白光跳转函数（乌鸦门 / 兔子门 / 金鱼门 / 大象门） ==================== */
+        function navigateWithWhiteFlash(targetUrl) {
+        if (isTransitioning) return;
+        isTransitioning = true;
+        whiteFlash.classList.add('active');
+        // 强制触发重绘确保 transition 完整生效
+        void whiteFlash.offsetWidth;
+        whiteFlash.style.opacity = '1';
+
+        setTimeout(() => {
+        window.location.href = targetUrl;
+        }, 1250);
+        }
+
+        /* ==================== 阶段二逻辑：三扇门联动与全亮触发大象门入口 ==================== */
+        const completedDoors = new Set();
+        const hotspots = document.querySelectorAll('.door-hotspot');
+        const btnElephantGate = document.getElementById('btn-elephant-gate');
+        let elephantGateTimer = null;
+
+        function updateDoorVisuals(animalKey, isHovered = false) {
+        if (isTransitioning) return;
+        const lightImg = document.getElementById(`light-${animalKey}`);
+        const dividerImg = document.getElementById(`divider-${animalKey}`);
+        const labelEl = document.getElementById(`label-${animalKey}`);
+
+        // 亮门层：悬停 或 已通关时点亮
+        if (lightImg) {
+        if (isHovered || completedDoors.has(animalKey)) {
+        lightImg.classList.add('is-active');
+        } else {
+        lightImg.classList.remove('is-active');
+        }
+        }
+
+        // 分割线与上方文字：鼠标悬停时完全同步缓慢显现
+        if (dividerImg) {
+        dividerImg.classList.toggle('is-hovered', isHovered);
+        }
+        if (labelEl) {
+        labelEl.classList.toggle('is-hovered', isHovered);
+        }
+        }
+
+        // 检测三扇门是否全部点亮，若全亮则延迟缓缓浮现 Keep Going 按钮
+        function checkAllDoorsUnlocked(delayMs = 1100) {
+        const allDone = completedDoors.has('crow')
+        && completedDoors.has('rabbit')
+        && completedDoors.has('fish');
+
+        if (allDone && !btnElephantGate.classList.contains('fade-in')) {
+        if (elephantGateTimer) clearTimeout(elephantGateTimer);
+        elephantGateTimer = setTimeout(() => {
+        btnElephantGate.classList.add('fade-in');
+        }, delayMs);
+        }
+        }
+
+        function goToElephantGate() {
+        navigateWithWhiteFlash('Elephant.html?from=doors');
+        }
+
+        hotspots.forEach(hotspot => {
+        const animalKey = hotspot.getAttribute('data-animal');
+
+        hotspot.addEventListener('mouseenter', () => updateDoorVisuals(animalKey, true));
+        hotspot.addEventListener('mouseleave', () => updateDoorVisuals(animalKey, false));
+        hotspot.addEventListener('click', () => {
+        // 点击瞬间保持对应门亮起
+        updateDoorVisuals(animalKey, true);
+
+        if (animalKey === 'crow') {
+        navigateWithWhiteFlash('crow.html');
+        } else if (animalKey === 'rabbit') {
+        navigateWithWhiteFlash('rabbit.html');
+        } else if (animalKey === 'fish') {
+        navigateWithWhiteFlash('goldfish.html');
+        }
+        });
+        });
+
+        // 清除旧的 localStorage 缓存
+        localStorage.removeItem('crow_done');
+
+        // 支持从任意关卡返回时跳过提灯、保持已通关的门常亮，并在三扇门全亮时浮现 Keep Going 按钮
+        const params = new URLSearchParams(window.location.search);
+        const fromAnimal = params.get('from');
+        if (fromAnimal) {
+        try {
+        sessionStorage.setItem(`${fromAnimal}_done`, 'true');
+        } catch (e) {}
+
+        scene1.style.display = 'none';
+        scene2.style.display = 'block';
+        resizeStages();
+        playDoorsQuoteAnimation(0.5);
+
+        ['crow', 'rabbit', 'fish'].forEach(key => {
+        let done = false;
+        try {
+        done = sessionStorage.getItem(`${key}_done`) === 'true';
+        } catch (e) {}
+        if (done || key === fromAnimal) {
+        completedDoors.add(key);
+        updateDoorVisuals(key, false);
+        }
+        });
+
+        // 每次从子关卡返回时立即检查是否已集齐三扇门
+        checkAllDoorsUnlocked(1200);
+
+        window.history.replaceState(null, '', 'HTMLPage1.html');
+        }
+    </script>
+</body>
+</html>

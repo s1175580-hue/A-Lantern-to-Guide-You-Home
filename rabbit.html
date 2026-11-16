@@ -1,0 +1,686 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Rabbit Gate · Sparks & Home</title>
+    <!-- 引入 GSAP 动画库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <style>
+        /* 引入自定义字体（与主界面、乌鸦门保持统一） */
+        @font-face {
+            font-family: 'CHI_Bottoms';
+            src: url('CHI_Bottoms.ttf') format('truetype');
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0b111b;
+            font-family: "CHI_Bottoms", "Georgia", serif;
+        }
+
+        /* ==================== 一、视觉层叠结构 ==================== */
+        .scene-layer {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+        }
+
+        /* 1. 最底层（z-index: 1）：治愈态背景（图2：发光兔子、黄色星芒和木屋） */
+        #bg-healed {
+            z-index: 1;
+            background: radial-gradient(circle at 50% 45%, #fef08a 0%, #ca8a04 35%, #1e293b 85%, #0f172a 100%);
+            filter: brightness(0.65);
+            transform: scale(1);
+            transition: filter 1.6s ease, transform 2.4s cubic-bezier(0.22, 1, 0.36, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+            #bg-healed.revealed {
+                filter: brightness(1);
+                transform: scale(1.06);
+            }
+
+        /* 2. 中间层（z-index: 2）：初始态背景（图1：暗色调、蓝色星芒和木屋） */
+        #bg-initial {
+            z-index: 2;
+            background: radial-gradient(circle at 50% 42%, #1e3a8a 0%, #0f172a 60%, #060913 100%);
+            opacity: 1;
+            transition: opacity 0.9s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+            #bg-initial.fade-out {
+                opacity: 0;
+                pointer-events: none;
+            }
+
+        .placeholder-label {
+            padding: 10px 24px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px dashed rgba(255, 255, 255, 0.35);
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 0.95rem;
+            letter-spacing: 0.12em;
+            pointer-events: none;
+        }
+
+        /* 3. 交互层（z-index: 3）：放置初始可点击的灰白光斑 */
+        #interactive-layer {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 3;
+            transition: opacity 0.8s ease;
+        }
+
+        /* 4. 通关治愈氛围层（z-index: 4）：通关后持续漂浮的浅暖黄发光粒子 */
+        #healed-particles-layer {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 4;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+        }
+
+            #healed-particles-layer.visible {
+                opacity: 1;
+            }
+
+        /* ==================== 二、浮动动画与光斑样式（中间实深、边缘柔浅） ==================== */
+        .light-orb-wrapper {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            animation: orbFloat var(--float-dur, 4s) ease-in-out var(--float-delay, 0s) infinite;
+        }
+
+        @keyframes orbFloat {
+            0%, 100% {
+                transform: translate(-50%, -50%) translateY(0px);
+            }
+
+            50% {
+                transform: translate(-50%, -50%) translateY(var(--float-dist, -12px));
+            }
+        }
+
+        /* 未点亮初始态：中心浓实、向外层层浅淡羽化的灰白光点 */
+        .light-orb {
+            width: var(--orb-size, 15px);
+            height: var(--orb-size, 15px);
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+            opacity: var(--orb-opacity, 0.88);
+            background: radial-gradient( circle, rgba(226, 232, 240, 0.98) 0%, rgba(203, 213, 225, 0.85) 28%, rgba(148, 163, 184, 0.32) 58%, rgba(148, 163, 184, 0.06) 80%, rgba(148, 163, 184, 0) 100% );
+            box-shadow: 0 0 calc(var(--orb-size, 15px) * 0.35) rgba(203, 213, 225, 0.45);
+            filter: blur(0.6px);
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease, filter 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+        }
+
+            /* 扩大一点透明点击热区，避免粒子变小后不好点中 */
+            .light-orb::after {
+                content: '';
+                position: absolute;
+                inset: -10px;
+                border-radius: 50%;
+            }
+
+            .light-orb:not(.lit):hover {
+                opacity: 1;
+                transform: scale(1.26);
+                filter: blur(0.3px);
+                background: radial-gradient( circle, rgba(255, 255, 255, 1) 0%, rgba(254, 252, 232, 0.88) 32%, rgba(254, 249, 195, 0.34) 62%, rgba(254, 249, 195, 0) 100% );
+                box-shadow: 0 0 calc(var(--orb-size, 15px) * 0.6) rgba(254, 249, 195, 0.65);
+            }
+
+            /* 已点亮状态 & 通关粒子：柔和浅暖黄（奶油暖黄内核，边缘轻盈浅淡消散） */
+            .light-orb.lit,
+            .gold-orb {
+                width: var(--orb-size, 15px);
+                height: var(--orb-size, 15px);
+                border-radius: 50%;
+                cursor: default;
+                opacity: var(--orb-opacity, 0.94);
+                filter: blur(0.4px);
+                background: radial-gradient( circle, #fffbeb 0%, #fef9c3 32%, rgba(254, 240, 138, 0.42) 60%, rgba(254, 249, 195, 0.1) 82%, rgba(254, 249, 195, 0) 100% );
+                box-shadow: 0 0 calc(var(--orb-size, 15px) * 0.65) rgba(254, 249, 195, 0.72);
+                animation: orbLitPulse var(--pulse-dur, 2.5s) ease-in-out var(--pulse-delay, 0s) infinite;
+            }
+
+        @keyframes orbLitPulse {
+            0%, 100% {
+                transform: scale(0.95);
+                opacity: var(--orb-opacity, 0.9);
+                box-shadow: 0 0 calc(var(--orb-size, 15px) * 0.5) rgba(254, 249, 195, 0.6);
+            }
+
+            50% {
+                transform: scale(1.18);
+                opacity: 1;
+                box-shadow: 0 0 calc(var(--orb-size, 15px) * 0.9) rgba(254, 249, 195, 0.92);
+            }
+        }
+
+        /* 点击瞬间向外飞散的浅暖黄微粒 */
+        .burst-spark {
+            position: fixed;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #fef9c3 0%, rgba(254, 240, 138, 0.35) 60%, transparent 100%);
+            pointer-events: none;
+            z-index: 5;
+            animation: sparkFly 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes sparkFly {
+            0% {
+                transform: translate(-50%, -50%) translate(0, 0) scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) translate(var(--tx), var(--ty)) scale(0.1);
+                opacity: 0;
+            }
+        }
+
+        /* ==================== 三、白屏过渡遮罩（z-index: 8） ==================== */
+        #white-flash {
+            position: fixed;
+            inset: 0;
+            z-index: 8;
+            background: radial-gradient(circle at center, #ffffff 0%, #fef9c3 60%, #fffbeb 100%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.85s ease-in-out;
+        }
+
+            #white-flash.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+        /* ==================== 顶部进度提示栏（z-index: 10） ==================== */
+        #hud-bar {
+            position: fixed;
+            top: 18px;
+            left: 20px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        .hud-pill {
+            padding: 7px 18px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(253, 224, 71, 0.32);
+            backdrop-filter: blur(6px);
+            color: #e2e8f0;
+            font-family: "CHI_Bottoms", "Georgia", serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+        }
+
+            .hud-pill strong {
+                color: #fde047;
+            }
+
+        /* ==================== 通关结局文案（顶部逐字模糊浮现并常驻）与按钮（底部缓慢淡入）（z-index: 10） ==================== */
+        #ending-panel {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #ending-poem {
+            position: absolute;
+            top: 7%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            max-width: 780px;
+            text-align: center;
+            color: #ffffff;
+            font-family: "CHI_Bottoms", "Georgia", serif;
+            font-style: normal;
+            font-size: clamp(1.05rem, 2.5vw, 1.45rem);
+            letter-spacing: 0.08em;
+            line-height: 1.7;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9), 0 0 22px rgba(253, 224, 71, 0.65);
+        }
+
+        .poem-word {
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .poem-char {
+            display: inline-block;
+            opacity: 0;
+            will-change: transform, opacity, filter;
+        }
+
+        /* 按钮：在诗句浮现后缓慢淡入浮现 */
+        #btn-continue {
+            position: absolute;
+            bottom: 8%;
+            left: 50%;
+            transform: translate(-50%, 10px);
+            padding: 13px 42px;
+            font-family: "CHI_Bottoms", "Georgia", serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.14em;
+            color: #fde047;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1.5px solid #fde047;
+            border-radius: 999px;
+            cursor: pointer;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 0 10px rgba(253, 224, 71, 0.35), inset 0 0 10px rgba(253, 224, 71, 0.15);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.5s ease, transform 1.5s ease, background 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+        }
+
+            #btn-continue.fade-in {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translate(-50%, 0);
+                animation: neonBreathe 2.4s ease-in-out 1.5s infinite;
+            }
+
+        @keyframes neonBreathe {
+            0%, 100% {
+                box-shadow: 0 0 10px rgba(253, 224, 71, 0.3), inset 0 0 6px rgba(253, 224, 71, 0.12);
+                border-color: rgba(253, 224, 71, 0.65);
+            }
+
+            50% {
+                box-shadow: 0 0 25px rgba(253, 224, 71, 0.85), 0 0 42px rgba(253, 224, 71, 0.4), inset 0 0 15px rgba(253, 224, 71, 0.4);
+                border-color: rgba(253, 224, 71, 1);
+            }
+        }
+
+        #btn-continue.fade-in:hover {
+            animation: none;
+            background: #fde047;
+            color: #0f172a;
+            box-shadow: 0 0 20px rgba(253, 224, 71, 1), 0 0 42px rgba(253, 224, 71, 0.8), 0 0 72px rgba(253, 224, 71, 0.5), inset 0 0 14px rgba(255, 255, 255, 0.85);
+            transform: translate(-50%, 0) scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 最底层（z-index: 1）：治愈态背景图（图2） -->
+    <div id="bg-healed" class="scene-layer">
+        <span id="label-healed" class="placeholder-label">【图2占位色块】治愈态：发光兔子 + 黄色星芒 + 木屋</span>
+    </div>
+
+    <!-- 2. 中间层（z-index: 2）：初始态背景图（图1） -->
+    <div id="bg-initial" class="scene-layer">
+        <span id="label-initial" class="placeholder-label">【图1占位色块】初始态：暗色调 + 蓝色星芒 + 木屋</span>
+    </div>
+
+    <!-- 3. 交互层（z-index: 3）：JS 动态生成 16 个大小不一的自发光灰白光斑 -->
+    <div id="interactive-layer"></div>
+
+    <!-- 4. 通关治愈粒子层（z-index: 4）：通关后持续漂浮的浅暖黄发光粒子 -->
+    <div id="healed-particles-layer"></div>
+
+    <!-- 白屏过渡遮罩（z-index: 8） -->
+    <div id="white-flash"></div>
+
+    <!-- 顶部状态栏 -->
+    <div id="hud-bar">
+        <div id="hud-tip" class="hud-pill">
+            Light the scattered sparks · Progress: <strong id="lit-count">0</strong> / 5
+        </div>
+    </div>
+
+    <!-- 通关文案（顶部逐字模糊浮现后常驻）与按钮（底部缓慢淡入） -->
+    <div id="ending-panel">
+        <p id="ending-poem">Small sparks, endless warmth.</p>
+        <button id="btn-continue" onclick="returnToHub()">Keep Going</button>
+    </div>
+
+    <script>
+        /* =========================================================================
+        【素材替换区】真实图片路径配置：
+        ========================================================================= */
+        const BG_INITIAL_SRC = 'rabbit_initial.png'; // 图1：暗色调、蓝色星芒和木屋
+        const BG_HEALED_SRC  = 'rabbit_healed.png';  // 图2：发光的兔子、黄色星芒和木屋
+
+        const bgInitialEl = document.getElementById('bg-initial');
+        const bgHealedEl  = document.getElementById('bg-healed');
+        const interactiveLayer = document.getElementById('interactive-layer');
+        const healedParticlesLayer = document.getElementById('healed-particles-layer');
+        const whiteFlash = document.getElementById('white-flash');
+        const endingPoem = document.getElementById('ending-poem');
+        const btnContinue = document.getElementById('btn-continue');
+        const hudTip = document.getElementById('hud-tip');
+        const litCountEl = document.getElementById('lit-count');
+
+        if (BG_INITIAL_SRC) {
+        bgInitialEl.style.backgroundImage = `url('${BG_INITIAL_SRC}')`;
+        bgInitialEl.style.backgroundSize = 'cover';
+        bgInitialEl.style.backgroundPosition = 'center center';
+        bgInitialEl.style.backgroundRepeat = 'no-repeat';
+        document.getElementById('label-initial').style.display = 'none';
+        }
+        if (BG_HEALED_SRC) {
+        bgHealedEl.style.backgroundImage = `url('${BG_HEALED_SRC}')`;
+        bgHealedEl.style.backgroundSize = 'cover';
+        bgHealedEl.style.backgroundPosition = 'center center';
+        bgHealedEl.style.backgroundRepeat = 'no-repeat';
+        document.getElementById('label-healed').style.display = 'none';
+        }
+
+        /* ==================== 逐字拆分（SplitText 效果）与 GSAP 逐字模糊浮现（播完常驻） ==================== */
+        const POEM_TEXT = 'Small sparks, endless warmth.';
+        let poemTween = null;
+
+        function buildSplitChars() {
+        endingPoem.innerHTML = '';
+        const words = POEM_TEXT.split(' ');
+        words.forEach((word, wIdx) => {
+        const wordSpan = document.createElement('span');
+        wordSpan.className = 'poem-word';
+
+        for (const ch of word) {
+        const charSpan = document.createElement('span');
+        charSpan.className = 'poem-char';
+        charSpan.textContent = ch;
+        wordSpan.appendChild(charSpan);
+        }
+
+        endingPoem.appendChild(wordSpan);
+
+        if (wIdx < words.length - 1) {
+        endingPoem.appendChild(document.createTextNode(' '));
+        }
+        });
+        return endingPoem.querySelectorAll('.poem-char');
+        }
+
+        function resetPoemChars() {
+        if (poemTween) {
+        poemTween.kill();
+        poemTween = null;
+        }
+        const chars = buildSplitChars();
+        if (window.gsap) {
+        gsap.set(chars, {
+        opacity: 0,
+        filter: 'blur(10px)',
+        y: '.25em',
+        scale: 1.15
+        });
+        }
+        }
+
+        function playBlurInLettersOnce() {
+        const chars = buildSplitChars();
+
+        if (!window.gsap) {
+        chars.forEach(c => { c.style.opacity = '1'; });
+        return;
+        }
+
+        // 逐字从模糊、透明、略大、略低的状态变成清楚并落到定位，播完后常驻停留
+        poemTween = gsap.fromTo(
+        chars,
+        {
+        opacity: 0,
+        filter: 'blur(10px)',
+        y: '.25em',
+        scale: 1.15
+        },
+        {
+        opacity: 1,
+        filter: 'blur(0px)',
+        y: 0,
+        scale: 1,
+        duration: 0.75,
+        ease: 'power2.out',
+        stagger: 0.07
+        }
+        );
+        }
+
+        const SPAWN_ORBS = 16;   // 屏幕上随机生成的总光斑数量
+        const REQUIRED_ORBS = 5; // 玩家只需点亮 5 个即可通关
+        let litCount = 0;
+        let isCleared = false;
+        let endingTimers = [];
+
+        function clearEndingTimers() {
+        endingTimers.forEach(id => clearTimeout(id));
+        endingTimers = [];
+        }
+
+        /* ==================== 全屏随机生成小巧且大小错落的粒子坐标 ==================== */
+        function generateOrbPositions(count, avoidBottomCenter = false) {
+        const positions = [];
+        function isInsideCabinZone(xPct, yPct) {
+        return xPct > 56 && xPct < 84 && yPct > 54 && yPct < 86;
+        }
+        function isInsideEndingTextZone(xPct, yPct) {
+        return avoidBottomCenter && xPct > 24 && xPct < 76 && yPct > 74;
+        }
+
+        let attempts = 0;
+        while (positions.length < count && attempts < 1400) {
+        attempts++;
+        const x = 6 + Math.random() * 88;
+        const y = 8 + Math.random() * 78;
+
+        if (isInsideCabinZone(x, y) || isInsideEndingTextZone(x, y)) continue;
+
+        const tooClose = positions.some(p => Math.hypot(p.x - x, p.y - y) < 8.5);
+        if (tooClose) continue;
+
+        const isLargerSpot = Math.random() < 0.25;
+        const size = isLargerSpot
+        ? Math.round(16 + Math.random() * 6)
+        : Math.round(8 + Math.random() * 7);
+
+        const opacity = (0.78 + Math.random() * 0.22).toFixed(2);
+
+        positions.push({ x, y, size, opacity });
+        }
+        return positions;
+        }
+
+        /* ==================== 生成通关后的浅暖黄发光浮动粒子 ==================== */
+        function populateHealedGoldOrbs() {
+        healedParticlesLayer.innerHTML = '';
+        const goldData = generateOrbPositions(18, true);
+
+        goldData.forEach((item) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'light-orb-wrapper';
+        wrapper.style.left = `${item.x}%`;
+        wrapper.style.top = `${item.y}%`;
+
+        const dur = (3.2 + Math.random() * 2.0).toFixed(2);
+        const delay = (-Math.random() * 5).toFixed(2);
+        const dist = (-10 - Math.random() * 10).toFixed(0);
+        wrapper.style.setProperty('--float-dur', `${dur}s`);
+        wrapper.style.setProperty('--float-delay', `${delay}s`);
+        wrapper.style.setProperty('--float-dist', `${dist}px`);
+
+        const orb = document.createElement('div');
+        orb.className = 'gold-orb';
+        orb.style.setProperty('--orb-size', `${item.size}px`);
+        orb.style.setProperty('--orb-opacity', item.opacity);
+        orb.style.setProperty('--pulse-dur', `${(2.2 + Math.random() * 1.4).toFixed(2)}s`);
+        orb.style.setProperty('--pulse-delay', `${(-Math.random() * 3).toFixed(2)}s`);
+
+        wrapper.appendChild(orb);
+        healedParticlesLayer.appendChild(wrapper);
+        });
+        }
+
+        /* ==================== 点击光斑时的浅暖黄粒子迸发效果 ==================== */
+        function spawnBurstSparks(clientX, clientY) {
+        const sparkCount = 10;
+        for (let i = 0; i < sparkCount; i++) {
+        const spark = document.createElement('div');
+        spark.className = 'burst-spark';
+        spark.style.left = `${clientX}px`;
+        spark.style.top = `${clientY}px`;
+
+        const angle = (i / sparkCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+        const dist = 26 + Math.random() * 40;
+        spark.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+        spark.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+
+        document.body.appendChild(spark);
+        setTimeout(() => spark.remove(), 620);
+        }
+        }
+
+        /* ==================== 初始化关卡 ==================== */
+        function initLevel() {
+        clearEndingTimers();
+        resetPoemChars();
+
+        litCount = 0;
+        isCleared = false;
+        litCountEl.textContent = '0';
+
+        hudTip.style.opacity = '1';
+        bgInitialEl.classList.remove('fade-out');
+        bgHealedEl.classList.remove('revealed');
+        whiteFlash.classList.remove('active');
+        btnContinue.classList.remove('fade-in');
+        healedParticlesLayer.classList.remove('visible');
+        healedParticlesLayer.innerHTML = '';
+
+        interactiveLayer.style.opacity = '1';
+        interactiveLayer.style.pointerEvents = 'auto';
+        interactiveLayer.innerHTML = '';
+
+        const orbsData = generateOrbPositions(SPAWN_ORBS, false);
+
+        orbsData.forEach((item) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'light-orb-wrapper';
+        wrapper.style.left = `${item.x}%`;
+        wrapper.style.top = `${item.y}%`;
+
+        const dur = (3.2 + Math.random() * 2.0).toFixed(2);
+        const delay = (-Math.random() * 5).toFixed(2);
+        const dist = (-10 - Math.random() * 10).toFixed(0);
+        wrapper.style.setProperty('--float-dur', `${dur}s`);
+        wrapper.style.setProperty('--float-delay', `${delay}s`);
+        wrapper.style.setProperty('--float-dist', `${dist}px`);
+
+        const orb = document.createElement('div');
+        orb.className = 'light-orb';
+        orb.style.setProperty('--orb-size', `${item.size}px`);
+        orb.style.setProperty('--orb-opacity', item.opacity);
+
+        orb.addEventListener('click', (e) => {
+        if (isCleared || orb.classList.contains('lit')) return;
+
+        orb.classList.add('lit');
+        spawnBurstSparks(e.clientX, e.clientY);
+
+        litCount++;
+        litCountEl.textContent = litCount;
+
+        if (litCount >= REQUIRED_ORBS) {
+        triggerClearTransition();
+        }
+        });
+
+        wrapper.appendChild(orb);
+        interactiveLayer.appendChild(wrapper);
+        });
+        }
+
+        /* ==================== 三、通关白光过渡切换背景 & 分阶段出场动画 ==================== */
+        function triggerClearTransition() {
+        isCleared = true;
+        clearEndingTimers();
+        hudTip.style.opacity = '0';
+        interactiveLayer.style.pointerEvents = 'none';
+
+        try {
+        sessionStorage.setItem('rabbit_done', 'true');
+        } catch (e) {}
+
+        populateHealedGoldOrbs();
+
+        // 1. 温暖白光淡入遮盖屏幕
+        endingTimers.push(setTimeout(() => {
+        whiteFlash.classList.add('active');
+        }, 420));
+
+        // 2. 白光达到最亮时，切换至治愈画面并淡出白光（约 2150ms 时治愈画面完全清晰呈现）
+        endingTimers.push(setTimeout(() => {
+        interactiveLayer.style.opacity = '0';
+        bgInitialEl.classList.add('fade-out');
+        bgHealedEl.classList.add('revealed');
+        healedParticlesLayer.classList.add('visible');
+
+        whiteFlash.classList.remove('active');
+        }, 1300));
+
+        // 3. 治愈画面完整呈现后留白 1.5s（2150ms + 1500ms = 3650ms），触发顶部诗句「逐字模糊浮现」并常驻
+        endingTimers.push(setTimeout(() => {
+        playBlurInLettersOnce();
+        }, 3650));
+
+        // 4. 诗句逐字浮现成形后（再隔 1.6s），底部按钮缓慢淡入浮现
+        endingTimers.push(setTimeout(() => {
+        btnContinue.classList.add('fade-in');
+        }, 5250));
+        }
+
+        /* ==================== 返回三扇门主界面并点亮兔子门 ==================== */
+        function returnToHub() {
+        try {
+        sessionStorage.setItem('rabbit_done', 'true');
+        } catch (e) {}
+        window.location.href = 'HTMLPage1.html?from=rabbit';
+        }
+
+        // 启动关卡
+        initLevel();
+    </script>
+</body>
+</html>

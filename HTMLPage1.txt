@@ -1,0 +1,332 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>三扇门场景交互</title>
+    <style>
+        /* 引入自定义字体 */
+        @font-face {
+            font-family: 'CHI_Bottoms'; /* 给这个字体起个名字，这里随便叫什么，只要下面能对应上就行 */
+            src: url('CHI_Bottoms.ttf') format('truetype'); /* 这里的 MyFont.ttf 要换成你真实的字体文件名 */
+            font-weight: normal;
+            font-style: normal;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: "Georgia", serif;
+        }
+
+        .scene {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* ==================== 阶段一：提灯场景 ==================== */
+        #scene-1 {
+            z-index: 10;
+            background-image: url('bg_start.png');
+        }
+
+        .lantern-wrapper {
+            position: absolute;
+            top: 75%;
+            left: 54%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 发光提灯图（新加的） */
+        #lantern-glow {
+            position: absolute;
+            top: -165px;
+            left: 35%;
+            transform: translateX(-50%);
+            width: 180px;
+            height: 220px;
+            transform: translateX(-50%) scale(7);
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+            pointer-events: none;
+            z-index: 2; /* 👈 加上这行，让发光图盖在最上面 */
+        }
+
+        /* 隐形点击热区（修改了原来的） */
+        #lantern-hotspot {
+            position: relative;
+            width: 120px;
+            height: 160px;
+            cursor: pointer;
+            /* 建议先保留这个虚线框，方便你看点击范围，等全部调好再删掉 */
+        }
+
+            /* 🌟 长按触发：让发光图显现出来 */
+            #lantern-hotspot.charging ~ #lantern-glow {
+                opacity: 1;
+            }
+
+        #hint-text {
+            margin-top: 40px; /* 控制文字和提灯的距离，觉得不够远就继续加数字 */
+            color: #ffffff;
+            font-size: 1.8rem; /* 字体大小 */
+            font-family: 'CHI_Bottoms', serif; /* 你的专属字体 */
+            letter-spacing: 0.10em; /* 字间距 */
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+            animation: textBreathe 3.2s ease-in-out infinite;
+            transition: opacity 0.3s ease;
+        }
+
+        @keyframes textBreathe {
+            0%, 100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* 白屏过渡 */
+        #white-flash {
+            position: fixed;
+            inset: 0;
+            background-color: #fff;
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1s ease;
+        }
+
+            #white-flash.active {
+                pointer-events: auto;
+            }
+
+        /* ==================== 阶段二：三扇门场景 ==================== */
+        #scene-2 {
+            z-index: 20;
+            display: none;
+            background-image: url('bg_doors.png');
+        }
+
+        /* 基础设置：都绝对定位 */
+        .door-unit {
+            position: absolute;
+        }
+
+        /* 1. 左边：兔子门（透视小，位置偏左） */
+        #door-rabbit {
+            left: 10%; /* 往左移 */
+            top: 40%; /* 往下移 */
+            width: 15%; /* 缩小宽度 */
+            height: 34%; /* 缩小高度 */
+        }
+
+        /* 2. 中间：乌鸦门（基准大小，位置居中） */
+        #door-crow {
+            left: 45%; /* 往左移一点，居中 */
+            top: 29%; /* 稍微往下移 */
+            width: 21%; /* 适当缩小 */
+            height: 54%;
+        }
+
+        /* 3. 右边：金鱼门（透视最小，位置偏右） */
+        #door-fish {
+            left: 86%; /* 往右移 */
+            top: 28%; /* 往下移 */
+            width: 10%; /* 缩到最小 */
+            height: 30%;
+        }
+
+        /* 门内的图层 */
+        .door-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* 发光图片基础设置（针对中间的乌鸦门） */
+        .door-light {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            /* 这里的数字就是遥控器：scale是大小，translateX是左右，translateY是上下 */
+            transform: scale(1.272) translateX(-4px) translateY(20px) rotate(0deg);
+            transform-origin: bottom center;
+        }
+
+        /* 鼠标悬停时显示 */
+        .door-unit.is-hovered .door-light {
+            opacity: 1;
+        }
+
+        /* 🌟 单独调整左门（兔子）的发光图片 */
+        #door-rabbit .door-light {
+            /* 如果觉得大了，把 1 改成 0.8 或 0.9 */
+            transform: scale(1.8) translateX(5px) translateY(46px) rotate(0deg);
+        }
+
+        /* 🌟 单独调整右门（金鱼）的发光图片 */
+        #door-fish .door-light {
+            transform: scale(1.82) translateX(-1.5px) translateY(33.5px) rotate(0deg);
+        }
+
+        /* 点击热区（调试用，带有红色虚线框，方便你找准位置） */
+        .door-hotspot {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            cursor: pointer;
+        }
+
+        /* 调试面板 */
+        #debug-panel {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            color: white;
+        }
+
+            #debug-panel button {
+                padding: 4px 8px;
+                margin-left: 4px;
+                cursor: pointer;
+            }
+    </style>
+</head>
+<body>
+
+    <!-- 调试面板 -->
+    <div id="debug-panel">
+        <button onclick="skipToScene2()">直接看三扇门</button>
+    </div>
+
+    <!-- 阶段一 -->
+    <div id="scene-1" class="scene">
+        <div class="lantern-wrapper">
+            <!-- 先放热区 -->
+            <div id="lantern-hotspot"></div>
+
+            <!-- 再放发光图 -->
+            <img id="lantern-glow" src="lantern_glow.png" alt="发光提灯">
+
+            <p id="hint-text">Pick up the lantern</p>
+        </div>
+    </div>
+
+    <!-- 阶段二 -->
+    <div id="scene-2" class="scene">
+        <div id="door-rabbit" class="door-unit" data-animal="rabbit">
+            <div class="door-layer">
+                <img class="door-light" src="rabbit_light.png" alt="兔子">
+            </div>
+            <div class="door-hotspot"></div>
+        </div>
+
+        <div id="door-crow" class="door-unit" data-animal="crow">
+            <div class="door-layer">
+                <img class="door-light" src="crow_light.png" alt="乌鸦">
+            </div>
+            <div class="door-hotspot"></div>
+        </div>
+
+        <div id="door-fish" class="door-unit" data-animal="fish">
+            <div class="door-layer">
+                <img class="door-light" src="goldfish_light.png" alt="金鱼"> <!-- 注意这里文件名是你截图里的 goldfish -->
+            </div>
+            <div class="door-hotspot"></div>
+        </div>
+    </div>
+
+    <!-- 白屏 -->
+    <div id="white-flash"></div>
+
+    <script>
+        // 阶段一逻辑
+        const lantern = document.getElementById('lantern-hotspot');
+        const whiteFlash = document.getElementById('white-flash');
+        const scene1 = document.getElementById('scene-1');
+        const scene2 = document.getElementById('scene-2');
+        let holdTimer = null;
+        let isTransitioning = false;
+
+        function startHold(e) {
+        if (isTransitioning) return;
+        if (e.cancelable) e.preventDefault();
+        lantern.classList.add('charging');
+        holdTimer = setTimeout(triggerSceneTransition, 1500);
+        }
+
+        function cancelHold() {
+        if (isTransitioning) return;
+        clearTimeout(holdTimer);
+        lantern.classList.remove('charging');
+        }
+
+        function triggerSceneTransition() {
+        isTransitioning = true;
+        whiteFlash.style.opacity = '1';
+        setTimeout(() => {
+        scene1.style.display = 'none';
+        scene2.style.display = 'block';
+        whiteFlash.style.opacity = '0';
+        setTimeout(() => { isTransitioning = false; }, 1000);
+        }, 1000);
+        }
+
+        lantern.addEventListener('mousedown', startHold);
+        window.addEventListener('mouseup', cancelHold);
+        lantern.addEventListener('touchstart', startHold, { passive: false });
+        window.addEventListener('touchend', cancelHold);
+
+        // 阶段二逻辑：悬停显示发光图
+        const doorUnits = document.querySelectorAll('.door-unit');
+        doorUnits.forEach(unit => {
+        const hotspot = unit.querySelector('.door-hotspot');
+        const animalKey = unit.getAttribute('data-animal');
+
+        hotspot.addEventListener('mouseenter', () => { unit.classList.add('is-hovered'); });
+        hotspot.addEventListener('mouseleave', () => { unit.classList.remove('is-hovered'); });
+
+        hotspot.addEventListener('click', () => {
+        alert(`准备进入 ${animalKey}.html`);
+        // window.location.href = `${animalKey}.html`; // 如果建好了html文件，把这行注释去掉，上面那行删掉
+        });
+        });
+
+        function skipToScene2() {
+        scene1.style.display = 'none';
+        scene2.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
